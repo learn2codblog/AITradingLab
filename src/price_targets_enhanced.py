@@ -8,6 +8,12 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 
+# Import stock universe module for enhanced sector screening
+try:
+    from . import stock_universe
+except ImportError:
+    import stock_universe
+
 
 def calculate_multi_timeframe_levels(stock: pd.DataFrame) -> dict:
     """
@@ -236,6 +242,51 @@ def get_nifty50_by_sector() -> dict:
         ]
     }
     return nifty50_by_sector
+
+
+def get_sector_stocks_from_universe(sector: str = None, universe_size: int = 100) -> list:
+    """
+    Get stocks for a specific sector from a larger universe beyond Nifty 50
+
+    Args:
+        sector: Sector name (if None, returns all sectors)
+        universe_size: Maximum number of stocks per sector
+
+    Returns:
+        List of stock symbols for the sector
+    """
+    # Try to load from custom CSV first
+    try:
+        custom_universe = stock_universe.load_custom_universe_by_sector()
+        if sector and sector in custom_universe:
+            return custom_universe[sector][:universe_size]
+        elif sector:
+            # Fallback to built-in data
+            return stock_universe.get_stock_universe_by_sector(sector, universe_size)
+    except Exception as e:
+        print(f"Note: Using built-in stock database. {e}")
+        # Use built-in comprehensive database
+        try:
+            return stock_universe.get_stock_universe_by_sector(sector, universe_size)
+        except:
+            # Final fallback to Nifty 50
+            nifty50 = get_nifty50_by_sector()
+            return nifty50.get(sector, [])
+
+    return []
+
+
+def get_all_available_sectors() -> list:
+    """
+    Get list of all available sectors from the comprehensive database
+
+    Returns:
+        List of sector names
+    """
+    try:
+        return stock_universe.get_all_sectors()
+    except:
+        return list(get_nifty50_by_sector().keys())
 
 
 def get_all_nifty50() -> list:

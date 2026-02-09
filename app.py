@@ -2,20 +2,22 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from data_loader import load_stock_data
-from fundamental_analysis import get_fundamentals, get_news_sentiment, get_analyst_ratings
-from technical_indicators import calculate_technical_indicators
-from feature_engineering import engineer_advanced_features, select_best_features
-from models import train_random_forest, train_xgboost, train_gradient_boosting, build_lstm_model, build_dense_model
-from metrics import sharpe_ratio, backtest_strategy, max_drawdown
-from portfolio_optimizer import optimize_portfolio
-from price_targets import calculate_entry_target_prices, get_nifty50_constituents, screening_is_buy_signal
-from price_targets_enhanced import (
+from src.data_loader import load_stock_data
+from src.fundamental_analysis import get_fundamentals, get_news_sentiment, get_analyst_ratings
+from src.technical_indicators import calculate_technical_indicators
+from src.feature_engineering import engineer_advanced_features, select_best_features
+from src.models import train_random_forest, train_xgboost, train_gradient_boosting, build_lstm_model, build_dense_model
+from src.metrics import sharpe_ratio, backtest_strategy, max_drawdown
+from src.portfolio_optimizer import optimize_portfolio
+from src.price_targets import calculate_entry_target_prices, get_nifty50_constituents, screening_is_buy_signal
+from src.price_targets_enhanced import (
     calculate_multi_timeframe_levels,
     generate_buy_sell_explanation,
     get_nifty50_by_sector,
     get_all_nifty50,
     get_nifty_top_n,
+    get_sector_stocks_from_universe,
+    get_all_available_sectors,
 )
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.model_selection import train_test_split
@@ -49,11 +51,26 @@ with st.container():
     with c2:
         st.subheader("Screener & Actions")
         screener_type = st.radio("Universe:", ["Top N (file)", "By Sector"], index=0)
-        nifty50_sectors = get_nifty50_by_sector()
+
+        # Get all available sectors (from enhanced database)
+        all_sectors = get_all_available_sectors()
         selected_sector = None
-        universe_size = st.number_input("Universe Size (fallback to CSV)", min_value=50, max_value=400, value=50, step=50)
+        sector_universe_size = 100  # Default for sector screening
+
+        universe_size = st.number_input("Universe Size (for Top N)", min_value=50, max_value=500, value=50, step=50)
+
         if screener_type == "By Sector":
-            selected_sector = st.selectbox("Choose Sector:", list(nifty50_sectors.keys()))
+            selected_sector = st.selectbox("Choose Sector:", all_sectors)
+            sector_universe_size = st.number_input(
+                "Max stocks per sector",
+                min_value=5,
+                max_value=200,
+                value=50,
+                step=10,
+                help="Number of stocks to analyze from this sector"
+            )
+            st.info(f"📊 Analyzing from comprehensive stock database (beyond Nifty 50)")
+
         confidence_thresh = st.slider("Confidence Threshold for Signals", 0.5, 0.95, 0.6)
         portfolio_size = st.number_input("Portfolio Size (use first N symbols)", min_value=1, max_value=400, value=5)
         allow_small_dataset = st.checkbox("Allow small dataset (proceed with warning)", value=False)
@@ -271,13 +288,20 @@ if technical_btn:
 if nifty50_btn:
     # Build universe
     if screener_type == "By Sector" and selected_sector:
-        st.subheader(f"🎯 Screener – {selected_sector} Sector")
-        universe = get_nifty50_by_sector().get(selected_sector, [])
+        st.subheader(f"🎯 Screener – {selected_sector} Sector (Enhanced Universe)")
+        # Use the enhanced function that pulls from larger database
+        universe = get_sector_stocks_from_universe(selected_sector, sector_universe_size)
+        st.info(f"📊 Analyzing {len(universe)} stocks from {selected_sector} sector (beyond Nifty 50)")
     else:
         st.subheader(f"🎯 Screener – Universe (top {universe_size} if available)")
         universe = get_nifty_top_n(n=universe_size)
+        st.info(f"Scanning {len(universe)} symbols from universe file or Nifty 50.")
 
-    st.info(f"Scanning {len(universe)} symbols. This may take a few minutes.")
+    if len(universe) == 0:
+        st.warning(f"No stocks found for sector: {selected_sector}")
+        st.stop()
+
+    st.info(f"This may take a few minutes for {len(universe)} stocks...")
 
     screening_results = []
     all_results = []

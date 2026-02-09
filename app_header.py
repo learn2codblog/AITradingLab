@@ -2,15 +2,15 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from data_loader import load_stock_data
-from fundamental_analysis import get_fundamentals, get_news_sentiment, get_analyst_ratings
-from technical_indicators import calculate_technical_indicators
-from feature_engineering import engineer_advanced_features, select_best_features
-from models import train_random_forest, train_xgboost, train_gradient_boosting, build_lstm_model, build_dense_model
-from metrics import sharpe_ratio, backtest_strategy, max_drawdown
-from portfolio_optimizer import optimize_portfolio
-from price_targets import calculate_entry_target_prices, get_nifty50_constituents, screening_is_buy_signal
-from price_targets_enhanced import calculate_multi_timeframe_levels, generate_buy_sell_explanation, get_nifty50_by_sector, get_all_nifty50
+from src.data_loader import load_stock_data
+from src.fundamental_analysis import get_fundamentals, get_news_sentiment, get_analyst_ratings
+from src.technical_indicators import calculate_technical_indicators
+from src.feature_engineering import engineer_advanced_features, select_best_features
+from src.models import train_random_forest, train_xgboost, train_gradient_boosting, build_lstm_model, build_dense_model
+from src.metrics import sharpe_ratio, backtest_strategy, max_drawdown
+from src.portfolio_optimizer import optimize_portfolio
+from src.price_targets import calculate_entry_target_prices, get_nifty50_constituents, screening_is_buy_signal
+from src.price_targets_enhanced import calculate_multi_timeframe_levels, generate_buy_sell_explanation, get_nifty50_by_sector, get_all_nifty50
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report, confusion_matrix, roc_auc_score
