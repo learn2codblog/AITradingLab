@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="0f77fe36-067f-4af8-8989-a2ce5cf3dcbd" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/APP_NAME_SUGGESTIONS.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/COMPLETION_SUMMARY.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/MAJOR_UPDATE_V2.1.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/MEDIAN_RETURN_EXPLAINED.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/NEW_FILES_LIST.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/QUICK_FIXES_V2.1.1.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/QUICK_SETUP.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/README_NEW.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/RESTRUCTURING_V2.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/RUN_THIS.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/START_APP.bat" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/UI_FIX_PRICE_DISPLAY.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/UPDATE_SUMMARY_V2.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app_modern.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/start.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/ui/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/ui/components.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/ui/styles.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/QUICK_SETUP_GUIDE.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/RESTRUCTURING_SUMMARY.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/SECTOR_SCREENING_UPGRADE.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/ARCHITECTURE.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/BEFORE_AFTER_COMPARISON.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/CHANGES_SUMMARY.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/ENHANCED_SECTOR_SCREENING.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/ENHANCEMENT_SUMMARY.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/FEATURE_ENHANCEMENTS.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/FEATURE_IMPLEMENTATION.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/FIX_NOT_ENOUGH_DATA.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/FIX_SUMMARY.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/NEW_FEATURES_V2.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/PORTFOLIO_SCORING_EXPLAINED.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/QUICK_REFERENCE.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/QUICK_REFERENCE_FORMULAS.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/QUICK_START.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/SCORING_SYSTEM_DETAILS.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/VISUAL_SCORING_GUIDE.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/price_targets_enhanced.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/price_targets_enhanced.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 8
+}</component>
+  <component name="ProjectId" id="39N8UQhr7HsSe2e2tqOw7lgbzdZ" />
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="2" id="Add" />
+  </component>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "feature-trading-code-refactor",
+    "kotlin-language-version-configured": "true",
+    "last_opened_file_path": "C:/Project/Code-Base/AI-Project/AITradingLab"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-jdk-30f59d01ecdd-26cb7f24e5b0-intellij.indexing.shared.core-IU-253.29346.138" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="0f77fe36-067f-4af8-8989-a2ce5cf3dcbd" name="Changes" comment="" />
+      <created>1770525182914</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1770525182914</updated>
+    </task>
+    <servers />
+  </component>
+  <component name="github-copilot-workspace">
+    <instructionFileLocations>
+      <option value=".github/instructions" />
+    </instructionFileLocations>
+    <promptFileLocations>
+      <option value=".github/prompts" />
+    </promptFileLocations>
+  </component>
+</project>
