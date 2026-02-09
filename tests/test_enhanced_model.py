@@ -5,8 +5,12 @@ Tests all components and shows the enhanced model in action
 """
 
 import sys
+import os
 import warnings
 warnings.filterwarnings('ignore')
+
+# Add parent directory to path to import from src
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 print("=" * 70)
 print("🚀 ENHANCED AI TRADING MODEL - TEST EXECUTION")
@@ -22,19 +26,19 @@ try:
     import numpy as np
     print("  ✓ pandas, numpy")
     
-    from data_loader import load_stock_data
+    from src.data_loader import load_stock_data
     print("  ✓ data_loader")
     
-    from technical_indicators import calculate_technical_indicators
+    from src.technical_indicators import calculate_technical_indicators
     print("  ✓ technical_indicators")
     
-    from feature_engineering import engineer_advanced_features, select_best_features
+    from src.feature_engineering import engineer_advanced_features, select_best_features
     print("  ✓ feature_engineering")
     
-    from fundamental_analysis import get_fundamentals
+    from src.fundamental_analysis import get_fundamentals
     print("  ✓ fundamental_analysis")
     
-    from models import train_random_forest
+    from src.models import train_random_forest
     print("  ✓ models")
     
     from sklearn.preprocessing import StandardScaler
