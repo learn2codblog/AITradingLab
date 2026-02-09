@@ -1,0 +1,34 @@
+# TradeGenius AI - Requirements
+# ================================
+
+# Core
+streamlit>=1.28.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Data
+yfinance>=0.2.30
+requests>=2.31.0
+
+# Visualization
+plotly>=5.15.0
+matplotlib>=3.7.0
+
+# Machine Learning
+scikit-learn>=1.3.0
+xgboost>=1.7.0
+
+# Deep Learning (Optional - for LSTM)
+tensorflow>=2.13.0
+keras>=2.13.0
+
+# Technical Analysis
+scipy>=1.11.0
+
+# Utilities
+python-dateutil>=2.8.0
+
+# Optional: Sentiment Analysis
+# transformers>=4.30.0
+# torch>=2.0.0
+
