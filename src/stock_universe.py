@@ -76,12 +76,20 @@ METALS_STOCKS = [
     "HINDZINC.NS", "APLAPOLLO.NS", "RATNAMANI.NS", "WELCORP.NS", "GPPL.NS"
 ]
 
+# Cement Sector - Dedicated sector for cement stocks
+CEMENT_STOCKS = [
+    "ULTRACEMCO.NS", "SHREECEM.NS", "AMBUJACEM.NS", "ACC.NS", "DALBHARAT.NS",
+    "RAMCOCEM.NS", "JKCEMENT.NS", "JKLAKSHMI.NS", "BIRLACEM.NS", "PRSMJOHNSN.NS",
+    "HEIDELBERG.NS", "INDIACEM.NS", "ORIENTCEM.NS", "SAGCEM.NS", "STARCEMENT.NS",
+    "SAGAR.NS", "KESORAMIND.NS", "NCLIND.NS", "DECCANCEM.NS", "BURNPUR.NS"
+]
+
 INFRASTRUCTURE_STOCKS = [
-    "LT.NS", "ADANIENT.NS", "ADANIPORTS.NS", "ULTRACEMCO.NS", "GRASIM.NS",
-    "SHREECEM.NS", "AMBUJACEM.NS", "ACC.NS", "DALBHARAT.NS", "RAMCOCEM.NS",
+    "LT.NS", "ADANIENT.NS", "ADANIPORTS.NS", "GRASIM.NS",
     "GMRINFRA.NS", "IRB.NS", "NBCC.NS", "HCC.NS", "NCC.NS",
     "ENGINERSIN.NS", "BEL.NS", "HAL.NS", "BEML.NS", "COCHINSHIP.NS",
-    "GRSE.NS", "MDL.NS"
+    "GRSE.NS", "MDL.NS", "PFC.NS", "RECLTD.NS", "IRFC.NS", "RVNL.NS",
+    "KEC.NS", "KALPATPOWR.NS", "CUMMINSIND.NS", "SIEMENS.NS", "ABB.NS"
 ]
 
 FINANCIAL_SERVICES = [
@@ -152,6 +160,7 @@ SECTOR_STOCKS = {
     "Energy & Power": ENERGY_STOCKS,
     "FMCG": FMCG_STOCKS,
     "Metals & Mining": METALS_STOCKS,
+    "Cement": CEMENT_STOCKS,
     "Infrastructure & Construction": INFRASTRUCTURE_STOCKS,
     "Financial Services": FINANCIAL_SERVICES,
     "Consumer Durables": CONSUMER_DURABLES,
@@ -243,4 +252,145 @@ def search_stock(query: str):
 
     matches = [s for s in all_stocks if query in s.upper()]
     return matches
+
+
+def get_stock_universe_by_sector(sector: str, limit: int = 100) -> list:
+    """
+    Get stocks for a specific sector from comprehensive universe
+
+    Args:
+        sector: Sector name (case-insensitive match)
+        limit: Maximum number of stocks to return
+
+    Returns:
+        List of stock symbols for the sector
+    """
+    # Try exact match first
+    if sector in SECTOR_STOCKS:
+        stocks = SECTOR_STOCKS[sector]
+        return stocks[:limit] if limit else stocks
+
+    # Try case-insensitive partial match
+    sector_lower = sector.lower()
+    for sector_name, stocks in SECTOR_STOCKS.items():
+        if sector_lower in sector_name.lower() or sector_name.lower() in sector_lower:
+            return stocks[:limit] if limit else stocks
+
+    # Map common sector aliases
+    sector_aliases = {
+        'bank': 'Banking',
+        'banks': 'Banking',
+        'tech': 'IT',
+        'technology': 'IT',
+        'information technology': 'IT',
+        'software': 'IT',
+        'pharma': 'Pharma & Healthcare',
+        'healthcare': 'Pharma & Healthcare',
+        'pharmaceutical': 'Pharma & Healthcare',
+        'auto': 'Automobile',
+        'automotive': 'Automobile',
+        'vehicles': 'Automobile',
+        'energy': 'Energy & Power',
+        'power': 'Energy & Power',
+        'oil': 'Energy & Power',
+        'oil & gas': 'Energy & Power',
+        'consumer goods': 'FMCG',
+        'fmcg': 'FMCG',
+        'metals': 'Metals & Mining',
+        'mining': 'Metals & Mining',
+        'steel': 'Metals & Mining',
+        'cement': 'Cement',
+        'construction': 'Infrastructure & Construction',
+        'infra': 'Infrastructure & Construction',
+        'infrastructure': 'Infrastructure & Construction',
+        'finance': 'Financial Services',
+        'nbfc': 'Financial Services',
+        'insurance': 'Financial Services',
+        'consumer': 'Consumer Durables',
+        'durables': 'Consumer Durables',
+        'real estate': 'Realty',
+        'realty': 'Realty',
+        'property': 'Realty',
+        'telecom': 'Telecom',
+        'telecommunications': 'Telecom',
+        'media': 'Media & Entertainment',
+        'entertainment': 'Media & Entertainment'
+    }
+
+    mapped_sector = sector_aliases.get(sector_lower)
+    if mapped_sector and mapped_sector in SECTOR_STOCKS:
+        stocks = SECTOR_STOCKS[mapped_sector]
+        return stocks[:limit] if limit else stocks
+
+    # Return empty list if sector not found
+    return []
+
+
+def load_custom_universe_by_sector(csv_path: str = None) -> dict:
+    """
+    Load custom stock universe from a CSV file
+
+    Args:
+        csv_path: Path to CSV file with 'Symbol' and 'Sector' columns
+
+    Returns:
+        Dict mapping sector names to lists of stock symbols
+    """
+    import os
+    import pandas as pd
+
+    # Default paths to search
+    if csv_path is None:
+        possible_paths = [
+            "stock_universe.csv",
+            "data/stock_universe.csv",
+            "universe.csv",
+            "data/universe.csv",
+            "nifty_top_400.csv",
+            "data/nifty_top_400.csv"
+        ]
+    else:
+        possible_paths = [csv_path]
+
+    for path in possible_paths:
+        if os.path.exists(path):
+            try:
+                df = pd.read_csv(path)
+
+                # Check for required columns
+                if 'Symbol' in df.columns and 'Sector' in df.columns:
+                    # Group by sector
+                    sector_dict = {}
+                    for sector in df['Sector'].unique():
+                        sector_stocks = df[df['Sector'] == sector]['Symbol'].tolist()
+                        # Add .NS suffix if not present
+                        sector_stocks = [s if s.endswith('.NS') else f"{s}.NS" for s in sector_stocks]
+                        sector_dict[sector] = sector_stocks
+                    return sector_dict
+
+                elif 'Symbol' in df.columns:
+                    # If only Symbol column, return all under 'All' sector
+                    symbols = df['Symbol'].tolist()
+                    symbols = [s if s.endswith('.NS') else f"{s}.NS" for s in symbols]
+                    return {'All': symbols}
+
+            except Exception as e:
+                print(f"Error loading {path}: {e}")
+                continue
+
+    # Return built-in sectors if no custom file found
+    return SECTOR_STOCKS.copy()
+
+
+def get_comprehensive_sector_list() -> list:
+    """
+    Get comprehensive list of all available sectors
+
+    Returns:
+        List of sector names with stock counts
+    """
+    sectors_with_counts = []
+    for sector, stocks in SECTOR_STOCKS.items():
+        sectors_with_counts.append(f"{sector} ({len(stocks)} stocks)")
+    return sectors_with_counts
 

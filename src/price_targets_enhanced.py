@@ -220,13 +220,14 @@ def get_nifty50_by_sector() -> dict:
             'MARUTI.NS', 'BAJAJ-AUTO.NS', 'TATAMOTORS.NS', 'EICHERMOT.NS', 'HEROMOTOCORP.NS', 'M&MFIN.NS'
         ],
         'Metals': [
-            'HINDALCO.NS', 'JSWSTEEL.NS'
+            'HINDALCO.NS', 'JSWSTEEL.NS', 'TATASTEEL.NS', 'VEDL.NS', 'NMDC.NS'
         ],
         'Cement': [
-            'ULTRACEMCO.NS'
+            'ULTRACEMCO.NS', 'SHREECEM.NS', 'AMBUJACEM.NS', 'ACC.NS', 'DALBHARAT.NS',
+            'RAMCOCEM.NS', 'JKCEMENT.NS', 'JKLAKSHMI.NS', 'BIRLACEM.NS', 'PRSMJOHNSN.NS'
         ],
         'FMCG': [
-            'NESTLEIND.NS', 'BRITANNIA.NS', 'VBL.NS', 'TATACONSUM.NS'
+            'NESTLEIND.NS', 'BRITANNIA.NS', 'VBL.NS', 'TATACONSUM.NS', 'HINDUNILVR.NS', 'ITC.NS'
         ],
         'Infra': [
             'LT.NS', 'ADANIGREEN.NS', 'ADANIENT.NS'
@@ -255,25 +256,27 @@ def get_sector_stocks_from_universe(sector: str = None, universe_size: int = 100
     Returns:
         List of stock symbols for the sector
     """
-    # Try to load from custom CSV first
+    # Try to get from stock_universe module directly
     try:
-        custom_universe = stock_universe.load_custom_universe_by_sector()
-        if sector and sector in custom_universe:
-            return custom_universe[sector][:universe_size]
-        elif sector:
-            # Fallback to built-in data
-            return stock_universe.get_stock_universe_by_sector(sector, universe_size)
+        # Use the comprehensive sector mapping
+        stocks = stock_universe.get_stock_universe_by_sector(sector, universe_size)
+        if stocks:
+            return stocks
     except Exception as e:
-        print(f"Note: Using built-in stock database. {e}")
-        # Use built-in comprehensive database
-        try:
-            return stock_universe.get_stock_universe_by_sector(sector, universe_size)
-        except:
-            # Final fallback to Nifty 50
-            nifty50 = get_nifty50_by_sector()
-            return nifty50.get(sector, [])
+        print(f"Note: Using fallback method. {e}")
 
-    return []
+    # Try to get by exact sector name
+    try:
+        stocks = stock_universe.get_stocks_by_sector(sector, universe_size)
+        if stocks:
+            return stocks
+    except Exception:
+        pass
+
+    # Final fallback to Nifty 50 by sector
+    nifty50 = get_nifty50_by_sector()
+    return nifty50.get(sector, [])
+
 
 
 def get_all_available_sectors() -> list:

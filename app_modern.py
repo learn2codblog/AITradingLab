@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 # Import backend modules
 from src.data_loader import load_stock_data
-from src.fundamental_analysis import get_fundamentals, get_news_sentiment, get_analyst_ratings
+from src.fundamental_analysis import get_fundamentals, get_news_sentiment, get_analyst_ratings, get_stock_news
 from src.technical_indicators import calculate_technical_indicators, generate_signals, get_trend
 from src.feature_engineering import engineer_advanced_features, select_best_features
 from src.models import train_random_forest, train_xgboost
@@ -34,7 +34,17 @@ from src.advanced_ai import (
     create_ensemble_prediction,
     generate_ai_analysis,
     predict_with_lstm,
-    analyze_news_sentiment
+    analyze_news_sentiment,
+    calculate_feature_importance,
+    calculate_position_size,
+    backtest_strategy,
+    analyze_sentiment_transformer,
+    calculate_supertrend,
+    calculate_adx,
+    calculate_psar,
+    forecast_volatility_garch,
+    get_volatility_regime,
+    combined_trend_signal
 )
 from src.risk_management import calculate_risk_metrics, calculate_stop_loss_take_profit
 
@@ -55,6 +65,33 @@ from ui.components import (
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+# ══════════════════════════════════════════════════════════════════════
+# CACHING FOR PERFORMANCE
+# ══════════════════════════════════════════════════════════════════════
+
+@st.cache_data(ttl=3600, show_spinner=False)  # Cache for 1 hour
+def load_stock_data_cached(symbol: str, start_date, end_date):
+    """Cached stock data loading"""
+    return load_stock_data(symbol, start_date, end_date)
+
+@st.cache_data(ttl=86400, show_spinner=False)  # Cache for 24 hours
+def get_fundamentals_cached(symbol: str):
+    """Cached fundamentals - changes less frequently"""
+    return get_fundamentals(symbol)
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def calculate_indicators_cached(_df):
+    """Cached indicator calculation - uses _df to avoid hashing issues"""
+    df = _df.copy()
+    df = calculate_technical_indicators(df)
+    df = calculate_advanced_indicators(df)
+    return df
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_news_sentiment_cached(symbol: str):
+    """Cached news sentiment"""
+    return get_news_sentiment(symbol)
 
 # ══════════════════════════════════════════════════════════════════════
 # PAGE CONFIGURATION
@@ -762,6 +799,19 @@ elif page == "🤖 AI Deep Analysis":
         st.markdown("<br>", unsafe_allow_html=True)
         run_ai = st.button("🚀 Run AI Analysis", type="primary", use_container_width=True)
 
+    # Advanced Settings Expander
+    with st.expander("⚙️ Advanced Analysis Settings"):
+        adv_col1, adv_col2, adv_col3 = st.columns(3)
+        with adv_col1:
+            supertrend_mult = st.slider("SuperTrend Multiplier", 1.0, 4.0, 3.0, 0.5,
+                                        help="Higher = fewer signals, lower = more sensitive")
+        with adv_col2:
+            supertrend_period = st.slider("SuperTrend Period", 5, 20, 10, 1,
+                                          help="ATR lookback period")
+        with adv_col3:
+            st.markdown("**Indicator Sensitivity**")
+            st.caption("Higher multiplier = fewer false signals during pullbacks")
+
     # Feature cards
     st.markdown("### 🎯 Advanced AI Features")
 
@@ -819,6 +869,9 @@ elif page == "🤖 AI Deep Analysis":
                 # Calculate advanced indicators
                 try:
                     stock_data = calculate_advanced_indicators(stock_data)
+
+                    # Recalculate SuperTrend with user-defined parameters
+                    stock_data = calculate_supertrend(stock_data, period=supertrend_period, multiplier=supertrend_mult)
                 except Exception as e:
                     st.warning(f"Some advanced indicators could not be calculated: {e}")
 
@@ -1199,6 +1252,903 @@ elif page == "🤖 AI Deep Analysis":
 
                 st.dataframe(pd.DataFrame(summary_data), use_container_width=True, hide_index=True)
 
+                # ═══════════════════════════════════════════════════════════════
+                # ENHANCED TECHNICAL INDICATORS DASHBOARD
+                # ═══════════════════════════════════════════════════════════════
+
+                st.markdown("---")
+                st.markdown("### 📈 Technical Indicators Dashboard")
+
+                # Get the latest indicator values
+                latest = stock_data.iloc[-1]
+
+                # ─── COMBINED TREND SIGNAL (SuperTrend + ADX + RSI) ───
+                st.markdown("#### 🎯 Combined Trend Signal (SuperTrend + ADX + RSI)")
+
+                trend_signal = combined_trend_signal(stock_data)
+
+                # Determine colors based on signal
+                signal_text = trend_signal.get('signal', 'Unknown')
+                strength = trend_signal.get('strength', 'Neutral')
+
+                if 'Bullish' in signal_text:
+                    signal_color = '#48bb78' if 'Strong' in signal_text else '#68d391'
+                    signal_bg = 'linear-gradient(135deg, #48bb78, #38a169)'
+                elif 'Bearish' in signal_text:
+                    signal_color = '#f56565' if 'Strong' in signal_text else '#fc8181'
+                    signal_bg = 'linear-gradient(135deg, #f56565, #c53030)'
+                else:
+                    signal_color = '#ed8936'
+                    signal_bg = 'linear-gradient(135deg, #ed8936, #dd6b20)'
+
+                # Main signal card
+                st.markdown(f"""
+                <div style='background: {signal_bg}; padding: 25px; border-radius: 15px; margin-bottom: 20px;'>
+                    <div style='display: flex; justify-content: space-between; align-items: center;'>
+                        <div>
+                            <h2 style='color: white; margin: 0;'>{signal_text}</h2>
+                            <p style='color: rgba(255,255,255,0.9); margin: 5px 0 0 0; font-size: 1.1rem;'>
+                                Strength: <strong>{strength}</strong>
+                            </p>
+                        </div>
+                        <div style='text-align: right;'>
+                            <div style='background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 10px;'>
+                                <p style='color: rgba(255,255,255,0.8); margin: 0; font-size: 0.9rem;'>Based on</p>
+                                <p style='color: white; margin: 0; font-weight: bold;'>SuperTrend + ADX + RSI</p>
+                            </div>
+                        </div>
+                    </div>
+                    <p style='color: rgba(255,255,255,0.95); margin: 15px 0 0 0; font-size: 1rem;'>
+                        💡 {trend_signal.get('description', '')}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Show warnings if any
+                warnings = trend_signal.get('warnings', [])
+                if warnings:
+                    for warning in warnings:
+                        st.warning(f"⚠️ {warning}")
+
+                # Details breakdown
+                details = trend_signal.get('details', {})
+                detail_col1, detail_col2, detail_col3 = st.columns(3)
+
+                with detail_col1:
+                    st_dir = details.get('SuperTrend_Direction', 'N/A')
+                    st_color = '#48bb78' if st_dir == 'Bullish' else '#f56565'
+                    st.markdown(f"""
+                    <div style='background: white; padding: 15px; border-radius: 10px; text-align: center; border-left: 4px solid {st_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                        <h5 style='color: #4a5568; margin: 0;'>SuperTrend</h5>
+                        <h3 style='color: {st_color}; margin: 5px 0;'>{st_dir}</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                with detail_col2:
+                    adx_val = details.get('ADX_Value', 0)
+                    adx_strong = details.get('ADX_Strong', False)
+                    adx_color = '#48bb78' if adx_strong else '#ed8936'
+                    st.markdown(f"""
+                    <div style='background: white; padding: 15px; border-radius: 10px; text-align: center; border-left: 4px solid {adx_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                        <h5 style='color: #4a5568; margin: 0;'>ADX</h5>
+                        <h3 style='color: {adx_color}; margin: 5px 0;'>{adx_val:.1f}</h3>
+                        <small style='color: #718096;'>{"Strong Trend" if adx_strong else "Weak Trend"}</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                with detail_col3:
+                    rsi_val = details.get('RSI_14', 50)
+                    rsi_mom = details.get('RSI_Momentum', 'Neutral')
+                    rsi_color = '#48bb78' if rsi_mom == 'Bullish' else '#f56565'
+                    st.markdown(f"""
+                    <div style='background: white; padding: 15px; border-radius: 10px; text-align: center; border-left: 4px solid {rsi_color}; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                        <h5 style='color: #4a5568; margin: 0;'>RSI (14)</h5>
+                        <h3 style='color: {rsi_color}; margin: 5px 0;'>{rsi_val:.1f}</h3>
+                        <small style='color: #718096;'>{rsi_mom} Momentum</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # Create tabs for different indicator categories
+                ind_tab1, ind_tab2, ind_tab3, ind_tab4 = st.tabs([
+                    "📊 Trend Indicators", "⚡ Momentum", "📉 Volatility", "💹 Volume"
+                ])
+
+                with ind_tab1:
+                    st.markdown("#### Trend Indicators")
+
+                    # Supertrend Signal
+                    supertrend_dir = latest.get('Supertrend_Direction', 0)
+                    supertrend_val = latest.get('Supertrend', latest['Close'])
+                    supertrend_signal = "🟢 BULLISH (Buy)" if supertrend_dir == 1 else "🔴 BEARISH (Sell)"
+
+                    # ADX Trend Strength
+                    adx_val = latest.get('ADX', 25)
+                    if adx_val > 50:
+                        adx_strength = "Very Strong Trend"
+                    elif adx_val > 25:
+                        adx_strength = "Strong Trend"
+                    elif adx_val > 20:
+                        adx_strength = "Weak Trend"
+                    else:
+                        adx_strength = "No Trend (Sideways)"
+
+                    # Moving Average Alignment
+                    sma20 = latest.get('SMA_20', latest.get('SMA20', latest['Close']))
+                    sma50 = latest.get('SMA_50', latest.get('SMA50', latest['Close']))
+                    sma200 = latest.get('SMA_200', latest.get('SMA200', latest['Close']))
+                    current_price = latest['Close']
+
+                    if current_price > sma20 > sma50 > sma200:
+                        ma_signal = "🟢 Perfect Bullish Alignment"
+                    elif current_price > sma50:
+                        ma_signal = "🟢 Bullish (Above SMA50)"
+                    elif current_price < sma20 < sma50 < sma200:
+                        ma_signal = "🔴 Perfect Bearish Alignment"
+                    elif current_price < sma50:
+                        ma_signal = "🔴 Bearish (Below SMA50)"
+                    else:
+                        ma_signal = "🟡 Mixed/Sideways"
+
+                    # PSAR Signal
+                    psar_val = latest.get('PSAR', latest['Close'])
+                    psar_signal = "🟢 BULLISH" if psar_val < current_price else "🔴 BEARISH"
+
+                    # Display trend indicators
+                    trend_col1, trend_col2 = st.columns(2)
+
+                    with trend_col1:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #1e3a5f, #2c5282); padding: 20px; border-radius: 12px; margin: 10px 0;'>
+                            <h4 style='color: white; margin: 0;'>🔥 Supertrend</h4>
+                            <h2 style='color: {"#48bb78" if supertrend_dir == 1 else "#f56565"}; margin: 10px 0;'>{supertrend_signal}</h2>
+                            <p style='color: rgba(255,255,255,0.8); margin: 0;'>Level: ₹{supertrend_val:.2f}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #2d3748, #4a5568); padding: 20px; border-radius: 12px; margin: 10px 0;'>
+                            <h4 style='color: white; margin: 0;'>📊 ADX Trend Strength</h4>
+                            <h2 style='color: #f6e05e; margin: 10px 0;'>{adx_val:.1f}</h2>
+                            <p style='color: rgba(255,255,255,0.8); margin: 0;'>{adx_strength}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with trend_col2:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #285e61, #2c7a7b); padding: 20px; border-radius: 12px; margin: 10px 0;'>
+                            <h4 style='color: white; margin: 0;'>📈 Moving Averages</h4>
+                            <h3 style='color: white; margin: 10px 0;'>{ma_signal}</h3>
+                            <p style='color: rgba(255,255,255,0.8); margin: 0;'>SMA20: ₹{sma20:.2f} | SMA50: ₹{sma50:.2f}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #553c9a, #6b46c1); padding: 20px; border-radius: 12px; margin: 10px 0;'>
+                            <h4 style='color: white; margin: 0;'>⭐ Parabolic SAR</h4>
+                            <h2 style='color: {"#48bb78" if psar_val < current_price else "#f56565"}; margin: 10px 0;'>{psar_signal}</h2>
+                            <p style='color: rgba(255,255,255,0.8); margin: 0;'>SAR Level: ₹{psar_val:.2f}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # Trend Visualization Chart
+                    st.markdown("#### 📉 Trend Indicators Chart (Last 60 Days)")
+
+                    chart_data = stock_data.tail(60).copy()
+                    fig_trend = go.Figure()
+
+                    # Candlestick
+                    fig_trend.add_trace(go.Candlestick(
+                        x=chart_data.index,
+                        open=chart_data['Open'],
+                        high=chart_data['High'],
+                        low=chart_data['Low'],
+                        close=chart_data['Close'],
+                        name='Price'
+                    ))
+
+                    # Supertrend
+                    if 'Supertrend' in chart_data.columns:
+                        fig_trend.add_trace(go.Scatter(
+                            x=chart_data.index,
+                            y=chart_data['Supertrend'],
+                            mode='lines',
+                            name='Supertrend',
+                            line=dict(color='#f6e05e', width=2)
+                        ))
+
+                    # SMA lines
+                    if 'SMA_20' in chart_data.columns:
+                        fig_trend.add_trace(go.Scatter(x=chart_data.index, y=chart_data['SMA_20'],
+                                                       mode='lines', name='SMA 20', line=dict(color='#63b3ed', width=1)))
+                    if 'SMA_50' in chart_data.columns:
+                        fig_trend.add_trace(go.Scatter(x=chart_data.index, y=chart_data['SMA_50'],
+                                                       mode='lines', name='SMA 50', line=dict(color='#f687b3', width=1)))
+
+                    fig_trend.update_layout(height=450, title="Price with Supertrend & Moving Averages",
+                                           xaxis_rangeslider_visible=False)
+                    st.plotly_chart(fig_trend, use_container_width=True)
+
+                with ind_tab2:
+                    st.markdown("#### Momentum Indicators")
+
+                    # RSI
+                    rsi_val = latest.get('RSI_14', latest.get('RSI14', 50))
+                    if rsi_val > 70:
+                        rsi_signal = "🔴 OVERBOUGHT"
+                        rsi_color = "#f56565"
+                    elif rsi_val < 30:
+                        rsi_signal = "🟢 OVERSOLD"
+                        rsi_color = "#48bb78"
+                    else:
+                        rsi_signal = "🟡 NEUTRAL"
+                        rsi_color = "#ed8936"
+
+                    # MACD
+                    macd_val = latest.get('MACD', 0)
+                    macd_signal_line = latest.get('MACD_Signal', 0)
+                    macd_hist = latest.get('MACD_Histogram', macd_val - macd_signal_line)
+                    macd_signal = "🟢 BULLISH" if macd_val > macd_signal_line else "🔴 BEARISH"
+
+                    # Stochastic
+                    stoch_k = latest.get('Stoch_K', 50)
+                    stoch_d = latest.get('Stoch_D', 50)
+                    if stoch_k > 80:
+                        stoch_signal = "🔴 OVERBOUGHT"
+                    elif stoch_k < 20:
+                        stoch_signal = "🟢 OVERSOLD"
+                    else:
+                        stoch_signal = "🟡 NEUTRAL"
+
+                    # Williams %R
+                    williams_r = latest.get('Williams_R', -50)
+                    if williams_r > -20:
+                        williams_signal = "🔴 OVERBOUGHT"
+                    elif williams_r < -80:
+                        williams_signal = "🟢 OVERSOLD"
+                    else:
+                        williams_signal = "🟡 NEUTRAL"
+
+                    mom_col1, mom_col2, mom_col3, mom_col4 = st.columns(4)
+
+                    with mom_col1:
+                        st.markdown(f"""
+                        <div style='background: white; padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid {rsi_color}; box-shadow: 0 2px 8px rgba(0,0,0,0.1);'>
+                            <h4 style='color: #4a5568; margin: 0;'>RSI (14)</h4>
+                            <h2 style='color: {rsi_color}; margin: 10px 0;'>{rsi_val:.1f}</h2>
+                            <p style='color: #718096; margin: 0;'>{rsi_signal}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with mom_col2:
+                        macd_color = "#48bb78" if macd_val > macd_signal_line else "#f56565"
+                        st.markdown(f"""
+                        <div style='background: white; padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid {macd_color}; box-shadow: 0 2px 8px rgba(0,0,0,0.1);'>
+                            <h4 style='color: #4a5568; margin: 0;'>MACD</h4>
+                            <h2 style='color: {macd_color}; margin: 10px 0;'>{macd_val:.2f}</h2>
+                            <p style='color: #718096; margin: 0;'>{macd_signal}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with mom_col3:
+                        stoch_color = "#f56565" if stoch_k > 80 else ("#48bb78" if stoch_k < 20 else "#ed8936")
+                        st.markdown(f"""
+                        <div style='background: white; padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid {stoch_color}; box-shadow: 0 2px 8px rgba(0,0,0,0.1);'>
+                            <h4 style='color: #4a5568; margin: 0;'>Stochastic</h4>
+                            <h2 style='color: {stoch_color}; margin: 10px 0;'>{stoch_k:.1f}</h2>
+                            <p style='color: #718096; margin: 0;'>{stoch_signal}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with mom_col4:
+                        will_color = "#f56565" if williams_r > -20 else ("#48bb78" if williams_r < -80 else "#ed8936")
+                        st.markdown(f"""
+                        <div style='background: white; padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid {will_color}; box-shadow: 0 2px 8px rgba(0,0,0,0.1);'>
+                            <h4 style='color: #4a5568; margin: 0;'>Williams %R</h4>
+                            <h2 style='color: {will_color}; margin: 10px 0;'>{williams_r:.1f}</h2>
+                            <p style='color: #718096; margin: 0;'>{williams_signal}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # Momentum Charts
+                    st.markdown("#### 📊 RSI & MACD Chart")
+
+                    from plotly.subplots import make_subplots
+
+                    chart_data = stock_data.tail(60).copy()
+                    fig_mom = make_subplots(rows=3, cols=1, shared_xaxes=True,
+                                           vertical_spacing=0.05,
+                                           row_heights=[0.5, 0.25, 0.25],
+                                           subplot_titles=('Price', 'RSI (14)', 'MACD'))
+
+                    # Price
+                    fig_mom.add_trace(go.Candlestick(x=chart_data.index, open=chart_data['Open'],
+                                                     high=chart_data['High'], low=chart_data['Low'],
+                                                     close=chart_data['Close'], name='Price'), row=1, col=1)
+
+                    # RSI
+                    rsi_col = 'RSI_14' if 'RSI_14' in chart_data.columns else 'RSI14'
+                    if rsi_col in chart_data.columns:
+                        fig_mom.add_trace(go.Scatter(x=chart_data.index, y=chart_data[rsi_col],
+                                                     mode='lines', name='RSI', line=dict(color='#667eea')), row=2, col=1)
+                        fig_mom.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1)
+                        fig_mom.add_hline(y=30, line_dash="dash", line_color="green", row=2, col=1)
+
+                    # MACD
+                    if 'MACD' in chart_data.columns:
+                        fig_mom.add_trace(go.Scatter(x=chart_data.index, y=chart_data['MACD'],
+                                                     mode='lines', name='MACD', line=dict(color='#4facfe')), row=3, col=1)
+                        if 'MACD_Signal' in chart_data.columns:
+                            fig_mom.add_trace(go.Scatter(x=chart_data.index, y=chart_data['MACD_Signal'],
+                                                         mode='lines', name='Signal', line=dict(color='#f093fb')), row=3, col=1)
+
+                    fig_mom.update_layout(height=600, showlegend=True, xaxis_rangeslider_visible=False)
+                    st.plotly_chart(fig_mom, use_container_width=True)
+
+                with ind_tab3:
+                    st.markdown("#### Volatility Indicators")
+
+                    # ATR
+                    atr_val = latest.get('ATR_14', latest.get('ATR14', 0))
+                    atr_pct = (atr_val / latest['Close']) * 100
+
+                    # Bollinger Bands
+                    bb_upper = latest.get('BB_Upper', latest['Close'] * 1.02)
+                    bb_lower = latest.get('BB_Lower', latest['Close'] * 0.98)
+                    bb_width = latest.get('BB_Width', 0.04)
+                    bb_pct = latest.get('BB_Percent', 0.5)
+
+                    if bb_pct > 1:
+                        bb_signal = "🔴 ABOVE UPPER BAND"
+                    elif bb_pct < 0:
+                        bb_signal = "🟢 BELOW LOWER BAND"
+                    else:
+                        bb_signal = "🟡 WITHIN BANDS"
+
+                    # Historical Volatility
+                    hv_val = latest.get('HV_20', 20)
+
+                    vol_col1, vol_col2, vol_col3 = st.columns(3)
+
+                    with vol_col1:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #e53e3e, #c53030); padding: 25px; border-radius: 12px; text-align: center;'>
+                            <h4 style='color: rgba(255,255,255,0.9); margin: 0;'>ATR (14)</h4>
+                            <h2 style='color: white; margin: 10px 0;'>₹{atr_val:.2f}</h2>
+                            <p style='color: rgba(255,255,255,0.8); margin: 0;'>{atr_pct:.2f}% of price</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with vol_col2:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #3182ce, #2b6cb0); padding: 25px; border-radius: 12px; text-align: center;'>
+                            <h4 style='color: rgba(255,255,255,0.9); margin: 0;'>Bollinger Bands</h4>
+                            <h3 style='color: white; margin: 10px 0;'>{bb_signal}</h3>
+                            <p style='color: rgba(255,255,255,0.8); margin: 0;'>Width: {bb_width:.2%}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with vol_col3:
+                        if hv_val > 40:
+                            hv_level = "HIGH"
+                            hv_color = "#e53e3e"
+                        elif hv_val > 20:
+                            hv_level = "NORMAL"
+                            hv_color = "#ed8936"
+                        else:
+                            hv_level = "LOW"
+                            hv_color = "#48bb78"
+
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, {hv_color}, {hv_color}dd); padding: 25px; border-radius: 12px; text-align: center;'>
+                            <h4 style='color: rgba(255,255,255,0.9); margin: 0;'>Historical Volatility</h4>
+                            <h2 style='color: white; margin: 10px 0;'>{hv_val:.1f}%</h2>
+                            <p style='color: rgba(255,255,255,0.8); margin: 0;'>{hv_level} Volatility</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # Bollinger Bands Chart
+                    st.markdown("#### 📊 Bollinger Bands Chart")
+
+                    chart_data = stock_data.tail(60).copy()
+                    fig_bb = go.Figure()
+
+                    fig_bb.add_trace(go.Candlestick(x=chart_data.index, open=chart_data['Open'],
+                                                    high=chart_data['High'], low=chart_data['Low'],
+                                                    close=chart_data['Close'], name='Price'))
+
+                    if 'BB_Upper' in chart_data.columns:
+                        fig_bb.add_trace(go.Scatter(x=chart_data.index, y=chart_data['BB_Upper'],
+                                                    mode='lines', name='Upper Band', line=dict(color='rgba(102, 126, 234, 0.5)')))
+                        fig_bb.add_trace(go.Scatter(x=chart_data.index, y=chart_data['BB_Lower'],
+                                                    mode='lines', name='Lower Band', line=dict(color='rgba(102, 126, 234, 0.5)'),
+                                                    fill='tonexty', fillcolor='rgba(102, 126, 234, 0.1)'))
+                        fig_bb.add_trace(go.Scatter(x=chart_data.index, y=chart_data['BB_Middle'],
+                                                    mode='lines', name='Middle Band', line=dict(color='#667eea', dash='dash')))
+
+                    fig_bb.update_layout(height=400, title="Price with Bollinger Bands", xaxis_rangeslider_visible=False)
+                    st.plotly_chart(fig_bb, use_container_width=True)
+
+                with ind_tab4:
+                    st.markdown("#### Volume Indicators")
+
+                    # Volume Ratio
+                    vol_ratio = latest.get('Volume_Ratio', 1.0)
+                    if vol_ratio > 1.5:
+                        vol_signal = "🔥 HIGH VOLUME"
+                        vol_color = "#48bb78"
+                    elif vol_ratio > 1.0:
+                        vol_signal = "📈 ABOVE AVERAGE"
+                        vol_color = "#38a169"
+                    elif vol_ratio > 0.7:
+                        vol_signal = "📊 NORMAL"
+                        vol_color = "#ed8936"
+                    else:
+                        vol_signal = "📉 LOW VOLUME"
+                        vol_color = "#f56565"
+
+                    # OBV Trend
+                    obv_val = latest.get('OBV', 0)
+
+                    # MFI
+                    mfi_val = latest.get('MFI', 50)
+                    if mfi_val > 80:
+                        mfi_signal = "🔴 OVERBOUGHT"
+                    elif mfi_val < 20:
+                        mfi_signal = "🟢 OVERSOLD"
+                    else:
+                        mfi_signal = "🟡 NEUTRAL"
+
+                    vol_col1, vol_col2, vol_col3 = st.columns(3)
+
+                    with vol_col1:
+                        st.markdown(f"""
+                        <div style='background: {vol_color}; padding: 25px; border-radius: 12px; text-align: center;'>
+                            <h4 style='color: rgba(255,255,255,0.9); margin: 0;'>Volume Ratio</h4>
+                            <h2 style='color: white; margin: 10px 0;'>{vol_ratio:.2f}x</h2>
+                            <p style='color: rgba(255,255,255,0.8); margin: 0;'>{vol_signal}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with vol_col2:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #805ad5, #6b46c1); padding: 25px; border-radius: 12px; text-align: center;'>
+                            <h4 style='color: rgba(255,255,255,0.9); margin: 0;'>OBV</h4>
+                            <h2 style='color: white; margin: 10px 0;'>{obv_val/1e6:.1f}M</h2>
+                            <p style='color: rgba(255,255,255,0.8); margin: 0;'>On Balance Volume</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with vol_col3:
+                        mfi_color = "#f56565" if mfi_val > 80 else ("#48bb78" if mfi_val < 20 else "#ed8936")
+                        st.markdown(f"""
+                        <div style='background: {mfi_color}; padding: 25px; border-radius: 12px; text-align: center;'>
+                            <h4 style='color: rgba(255,255,255,0.9); margin: 0;'>Money Flow Index</h4>
+                            <h2 style='color: white; margin: 10px 0;'>{mfi_val:.1f}</h2>
+                            <p style='color: rgba(255,255,255,0.8); margin: 0;'>{mfi_signal}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # Volume Chart
+                    st.markdown("#### 📊 Volume Analysis")
+
+                    chart_data = stock_data.tail(60).copy()
+                    fig_vol = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                                           vertical_spacing=0.1, row_heights=[0.6, 0.4])
+
+                    # Price
+                    fig_vol.add_trace(go.Candlestick(x=chart_data.index, open=chart_data['Open'],
+                                                     high=chart_data['High'], low=chart_data['Low'],
+                                                     close=chart_data['Close'], name='Price'), row=1, col=1)
+
+                    # Volume bars
+                    colors = ['#48bb78' if c > o else '#f56565' for c, o in zip(chart_data['Close'], chart_data['Open'])]
+                    fig_vol.add_trace(go.Bar(x=chart_data.index, y=chart_data['Volume'],
+                                            marker_color=colors, name='Volume'), row=2, col=1)
+
+                    fig_vol.update_layout(height=500, showlegend=True, xaxis_rangeslider_visible=False)
+                    st.plotly_chart(fig_vol, use_container_width=True)
+
+                # ═══════════════════════════════════════════════════════════════
+                # POSITION SIZING & RISK MANAGEMENT
+                # ═══════════════════════════════════════════════════════════════
+
+                st.markdown("---")
+                st.markdown("### 💰 Position Sizing & Risk Management")
+
+                ps_col1, ps_col2 = st.columns([1, 2])
+
+                with ps_col1:
+                    trading_capital = st.number_input("💵 Trading Capital (₹)",
+                                                      min_value=10000, max_value=100000000,
+                                                      value=100000, step=10000)
+                    risk_per_trade = st.slider("⚠️ Risk per Trade (%)", 0.5, 5.0, 2.0, 0.5)
+                    atr_mult = st.slider("📏 ATR Multiplier (Stop Loss)", 1.0, 4.0, 2.0, 0.5)
+
+                with ps_col2:
+                    position_result = calculate_position_size(stock_data, trading_capital, risk_per_trade, atr_mult)
+
+                    if 'error' not in position_result:
+                        ps_col2a, ps_col2b, ps_col2c = st.columns(3)
+
+                        with ps_col2a:
+                            st.markdown(f"""
+                            <div style='background: linear-gradient(135deg, #667eea, #764ba2); padding: 20px; border-radius: 12px; text-align: center;'>
+                                <h4 style='color: rgba(255,255,255,0.8); margin: 0;'>Position Size</h4>
+                                <h2 style='color: white; margin: 10px 0;'>{position_result['position_size_shares']} shares</h2>
+                                <p style='color: rgba(255,255,255,0.8); margin: 0;'>₹{position_result['position_value']:,.0f}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                        with ps_col2b:
+                            st.markdown(f"""
+                            <div style='background: linear-gradient(135deg, #f56565, #c53030); padding: 20px; border-radius: 12px; text-align: center;'>
+                                <h4 style='color: rgba(255,255,255,0.8); margin: 0;'>Stop Loss</h4>
+                                <h2 style='color: white; margin: 10px 0;'>₹{position_result['stop_loss_price']:.2f}</h2>
+                                <p style='color: rgba(255,255,255,0.8); margin: 0;'>-{position_result['stop_loss_percent']:.1f}%</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                        with ps_col2c:
+                            st.markdown(f"""
+                            <div style='background: linear-gradient(135deg, #48bb78, #38a169); padding: 20px; border-radius: 12px; text-align: center;'>
+                                <h4 style='color: rgba(255,255,255,0.8); margin: 0;'>Take Profit (2R)</h4>
+                                <h2 style='color: white; margin: 10px 0;'>₹{position_result['take_profit_2r']:.2f}</h2>
+                                <p style='color: rgba(255,255,255,0.8); margin: 0;'>+{((position_result['take_profit_2r']/position_result['current_price'])-1)*100:.1f}%</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                        # Risk details table
+                        st.markdown("#### 📋 Trade Setup Details")
+                        risk_df = pd.DataFrame({
+                            'Parameter': ['Entry Price', 'Stop Loss', 'Take Profit 1:1', 'Take Profit 2:1', 'Take Profit 3:1',
+                                          'Risk Amount', 'Volatility Level', 'Recommended Risk %'],
+                            'Value': [
+                                f"₹{position_result['current_price']:.2f}",
+                                f"₹{position_result['stop_loss_price']:.2f}",
+                                f"₹{position_result['take_profit_1r']:.2f}",
+                                f"₹{position_result['take_profit_2r']:.2f}",
+                                f"₹{position_result['take_profit_3r']:.2f}",
+                                f"₹{position_result['risk_amount']:,.0f}",
+                                position_result['volatility_level'],
+                                f"{position_result['recommended_risk_percent']:.1f}%"
+                            ]
+                        })
+                        st.dataframe(risk_df, use_container_width=True, hide_index=True)
+
+                # ═══════════════════════════════════════════════════════════════
+                # VOLATILITY FORECASTING (GARCH/EWMA)
+                # ═══════════════════════════════════════════════════════════════
+
+                st.markdown("---")
+                st.markdown("### 📉 Volatility Forecasting")
+
+                vol_col1, vol_col2 = st.columns(2)
+
+                with vol_col1:
+                    with st.spinner("Forecasting volatility..."):
+                        vol_forecast = forecast_volatility_garch(stock_data, horizon=5)
+
+                    if 'error' not in vol_forecast:
+                        method = vol_forecast.get('method', 'EWMA')
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #2d3748, #4a5568); padding: 20px; border-radius: 12px;'>
+                            <h4 style='color: white; margin: 0;'>📊 {method} Volatility Forecast</h4>
+                            <div style='display: flex; justify-content: space-around; margin-top: 15px;'>
+                                <div style='text-align: center;'>
+                                    <p style='color: rgba(255,255,255,0.7); margin: 0;'>Current Daily Vol</p>
+                                    <h3 style='color: #f6e05e; margin: 5px 0;'>{vol_forecast['current_daily_vol']*100:.2f}%</h3>
+                                </div>
+                                <div style='text-align: center;'>
+                                    <p style='color: rgba(255,255,255,0.7); margin: 0;'>Annualized Vol</p>
+                                    <h3 style='color: #fc8181; margin: 5px 0;'>{vol_forecast['annualized_vol_pct']:.1f}%</h3>
+                                </div>
+                                <div style='text-align: center;'>
+                                    <p style='color: rgba(255,255,255,0.7); margin: 0;'>Vol Trend</p>
+                                    <h3 style='color: {"#48bb78" if vol_forecast["vol_trend"] == "Decreasing" else "#f56565"}; margin: 5px 0;'>{vol_forecast['vol_trend']}</h3>
+                                </div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        # Volatility forecast chart
+                        if 'forecasted_daily_vol' in vol_forecast:
+                            fig_vol = go.Figure()
+                            fig_vol.add_trace(go.Scatter(
+                                y=[v*100 for v in vol_forecast['forecasted_daily_vol']],
+                                mode='lines+markers',
+                                name='Forecasted Volatility',
+                                line=dict(color='#f6e05e', width=2)
+                            ))
+                            fig_vol.update_layout(
+                                title="5-Day Volatility Forecast",
+                                yaxis_title="Daily Volatility (%)",
+                                xaxis_title="Days Ahead",
+                                height=250
+                            )
+                            st.plotly_chart(fig_vol, use_container_width=True)
+                    else:
+                        st.warning(f"Volatility forecast: {vol_forecast.get('error', 'Unknown error')}")
+
+                with vol_col2:
+                    vol_regime = get_volatility_regime(stock_data)
+
+                    if 'error' not in vol_regime:
+                        regime = vol_regime.get('regime', 'Unknown')
+                        regime_colors = {
+                            'Very Low Volatility': '#3182ce',
+                            'Low Volatility': '#48bb78',
+                            'Normal Volatility': '#ed8936',
+                            'High Volatility': '#e53e3e',
+                            'Extreme Volatility': '#9b2c2c'
+                        }
+                        regime_color = regime_colors.get(regime, '#718096')
+
+                        st.markdown(f"""
+                        <div style='background: {regime_color}; padding: 20px; border-radius: 12px;'>
+                            <h4 style='color: rgba(255,255,255,0.9); margin: 0;'>🎯 Volatility Regime</h4>
+                            <h2 style='color: white; margin: 10px 0;'>{regime}</h2>
+                            <p style='color: rgba(255,255,255,0.9); margin: 5px 0;'>
+                                Position Size Adj: <strong>{vol_regime['position_size_adjustment']:.1f}x</strong>
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        st.markdown(f"""
+                        <div style='background: white; padding: 15px; border-radius: 10px; margin-top: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                            <h5 style='color: #4a5568; margin: 0 0 10px 0;'>💡 Recommendation</h5>
+                            <p style='color: #718096; margin: 0;'>{vol_regime.get('recommendation', 'N/A')}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        # Volatility comparison
+                        st.markdown("#### Volatility Comparison")
+                        vol_compare = pd.DataFrame({
+                            'Period': ['10-Day', '30-Day', '60-Day'],
+                            'Annualized Vol': [
+                                f"{vol_regime['vol_10d']:.1f}%",
+                                f"{vol_regime['vol_30d']:.1f}%",
+                                f"{vol_regime['vol_60d']:.1f}%"
+                            ]
+                        })
+                        st.dataframe(vol_compare, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning(f"Volatility regime: {vol_regime.get('error', 'Unknown error')}")
+
+                # ═══════════════════════════════════════════════════════════════
+                # FEATURE IMPORTANCE ANALYSIS
+                # ═══════════════════════════════════════════════════════════════
+
+                st.markdown("---")
+                st.markdown("### 🔬 Feature Importance Analysis")
+
+                with st.spinner("Analyzing feature importance..."):
+                    feature_result = calculate_feature_importance(stock_data)
+
+                if 'error' not in feature_result:
+                    fi_col1, fi_col2 = st.columns([2, 1])
+
+                    with fi_col1:
+                        # Feature importance bar chart
+                        top_features = feature_result.get('top_features', [])[:10]
+
+                        fig_fi = go.Figure()
+                        fig_fi.add_trace(go.Bar(
+                            x=[f['combined_score'] for f in top_features],
+                            y=[f['feature'] for f in top_features],
+                            orientation='h',
+                            marker_color='#667eea'
+                        ))
+                        fig_fi.update_layout(
+                            title="Top 10 Most Predictive Features",
+                            xaxis_title="Importance Score",
+                            yaxis_title="Feature",
+                            height=400
+                        )
+                        st.plotly_chart(fig_fi, use_container_width=True)
+
+                    with fi_col2:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #1e3a8a, #7c3aed); padding: 20px; border-radius: 12px; margin-bottom: 15px;'>
+                            <h4 style='color: white; margin: 0;'>Model Accuracy</h4>
+                            <h2 style='color: #f6e05e; margin: 10px 0;'>{feature_result.get('model_accuracy', 0):.1%}</h2>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        st.markdown("**Best Features for Prediction:**")
+                        for i, feat in enumerate(feature_result.get('best_features', [])[:5], 1):
+                            st.markdown(f"{i}. `{feat}`")
+                else:
+                    st.warning(f"Feature importance analysis: {feature_result.get('error', 'Unknown error')}")
+
+                # ═══════════════════════════════════════════════════════════════
+                # BACKTESTING
+                # ═══════════════════════════════════════════════════════════════
+
+                st.markdown("---")
+                st.markdown("### 📈 Strategy Backtesting")
+
+                # Backtest parameters
+                bt_params_col1, bt_params_col2, bt_params_col3 = st.columns(3)
+                with bt_params_col1:
+                    bt_commission = st.slider("Commission (%)", 0.05, 0.50, 0.10, 0.05, key="bt_comm")
+                with bt_params_col2:
+                    bt_slippage = st.slider("Slippage (%)", 0.01, 0.20, 0.05, 0.01, key="bt_slip")
+                with bt_params_col3:
+                    bt_allow_short = st.checkbox("Allow Short Selling", value=True, key="bt_short")
+
+                with st.spinner("Running realistic backtest with costs..."):
+                    backtest_result = backtest_strategy(
+                        stock_data,
+                        initial_capital=100000,
+                        commission_pct=bt_commission,
+                        slippage_pct=bt_slippage,
+                        allow_short=bt_allow_short,
+                        max_exposure_pct=25
+                    )
+
+                if 'error' not in backtest_result:
+                    # First row - Returns
+                    bt_col1, bt_col2, bt_col3, bt_col4 = st.columns(4)
+
+                    ret_color = "#48bb78" if backtest_result['total_return_pct'] > 0 else "#f56565"
+
+                    with bt_col1:
+                        st.markdown(f"""
+                        <div style='background: white; padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid {ret_color}; box-shadow: 0 2px 8px rgba(0,0,0,0.1);'>
+                            <h4 style='color: #4a5568; margin: 0;'>Strategy Return</h4>
+                            <h2 style='color: {ret_color}; margin: 10px 0;'>{backtest_result['total_return_pct']:+.2f}%</h2>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with bt_col2:
+                        bh_color = "#48bb78" if backtest_result['buy_hold_return_pct'] > 0 else "#f56565"
+                        st.markdown(f"""
+                        <div style='background: white; padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid {bh_color}; box-shadow: 0 2px 8px rgba(0,0,0,0.1);'>
+                            <h4 style='color: #4a5568; margin: 0;'>Buy & Hold</h4>
+                            <h2 style='color: {bh_color}; margin: 10px 0;'>{backtest_result['buy_hold_return_pct']:+.2f}%</h2>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with bt_col3:
+                        st.markdown(f"""
+                        <div style='background: white; padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid #667eea; box-shadow: 0 2px 8px rgba(0,0,0,0.1);'>
+                            <h4 style='color: #4a5568; margin: 0;'>Win Rate</h4>
+                            <h2 style='color: #667eea; margin: 10px 0;'>{backtest_result['win_rate_pct']:.1f}%</h2>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with bt_col4:
+                        st.markdown(f"""
+                        <div style='background: white; padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid #f56565; box-shadow: 0 2px 8px rgba(0,0,0,0.1);'>
+                            <h4 style='color: #4a5568; margin: 0;'>Max Drawdown</h4>
+                            <h2 style='color: #f56565; margin: 10px 0;'>{backtest_result['max_drawdown_pct']:.2f}%</h2>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # Second row - Risk Metrics
+                    st.markdown("#### 📊 Risk-Adjusted Returns")
+                    risk_col1, risk_col2, risk_col3, risk_col4 = st.columns(4)
+
+                    sharpe = backtest_result.get('sharpe_ratio', 0)
+                    sharpe_color = "#48bb78" if sharpe > 1 else ("#ed8936" if sharpe > 0 else "#f56565")
+
+                    with risk_col1:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #1e3a5f, #2c5282); padding: 15px; border-radius: 10px; text-align: center;'>
+                            <h5 style='color: rgba(255,255,255,0.8); margin: 0;'>Sharpe Ratio</h5>
+                            <h2 style='color: {sharpe_color}; margin: 5px 0;'>{sharpe:.2f}</h2>
+                            <small style='color: rgba(255,255,255,0.6);'>{"Excellent" if sharpe > 2 else "Good" if sharpe > 1 else "Fair" if sharpe > 0 else "Poor"}</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    sortino = backtest_result.get('sortino_ratio', 0)
+                    with risk_col2:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #553c9a, #6b46c1); padding: 15px; border-radius: 10px; text-align: center;'>
+                            <h5 style='color: rgba(255,255,255,0.8); margin: 0;'>Sortino Ratio</h5>
+                            <h2 style='color: white; margin: 5px 0;'>{sortino:.2f}</h2>
+                            <small style='color: rgba(255,255,255,0.6);'>Downside Risk Adj.</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    calmar = backtest_result.get('calmar_ratio', 0)
+                    with risk_col3:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #285e61, #2c7a7b); padding: 15px; border-radius: 10px; text-align: center;'>
+                            <h5 style='color: rgba(255,255,255,0.8); margin: 0;'>Calmar Ratio</h5>
+                            <h2 style='color: white; margin: 5px 0;'>{calmar:.2f}</h2>
+                            <small style='color: rgba(255,255,255,0.6);'>Return / Drawdown</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    total_costs = backtest_result.get('total_costs', 0)
+                    with risk_col4:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #c53030, #9b2c2c); padding: 15px; border-radius: 10px; text-align: center;'>
+                            <h5 style='color: rgba(255,255,255,0.8); margin: 0;'>Total Costs</h5>
+                            <h2 style='color: white; margin: 5px 0;'>₹{total_costs:,.0f}</h2>
+                            <small style='color: rgba(255,255,255,0.6);'>Commission + Slippage</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # Equity curve
+                    equity_data = backtest_result.get('equity_curve', [])
+                    if equity_data:
+                        fig_eq = go.Figure()
+                        fig_eq.add_trace(go.Scatter(
+                            y=[e['equity'] for e in equity_data],
+                            mode='lines',
+                            name='Strategy Equity',
+                            line=dict(color='#667eea', width=2)
+                        ))
+                        fig_eq.update_layout(
+                            title="Equity Curve",
+                            yaxis_title="Portfolio Value (₹)",
+                            height=300
+                        )
+                        st.plotly_chart(fig_eq, use_container_width=True)
+
+                    # Backtest summary
+                    with st.expander("📊 Detailed Backtest Statistics"):
+                        bt_stats = pd.DataFrame({
+                            'Metric': ['Total Trades', 'Long Trades', 'Short Trades', 'Winning Trades', 'Losing Trades',
+                                       'Win Rate', 'Avg Win', 'Avg Loss', 'Profit Factor', 'Max Drawdown',
+                                       'Max DD Duration', 'Sharpe Ratio', 'Sortino Ratio', 'Calmar Ratio',
+                                       'Total Costs', 'Costs as % of P&L'],
+                            'Value': [
+                                backtest_result['total_trades'],
+                                backtest_result.get('long_trades', 0),
+                                backtest_result.get('short_trades', 0),
+                                backtest_result['winning_trades'],
+                                backtest_result['losing_trades'],
+                                f"{backtest_result['win_rate_pct']:.1f}%",
+                                f"{backtest_result['avg_win_pct']:.2f}%",
+                                f"{backtest_result['avg_loss_pct']:.2f}%",
+                                f"{backtest_result['profit_factor']:.2f}",
+                                f"{backtest_result['max_drawdown_pct']:.2f}%",
+                                f"{backtest_result.get('max_drawdown_duration', 0)} days",
+                                f"{backtest_result.get('sharpe_ratio', 0):.2f}",
+                                f"{backtest_result.get('sortino_ratio', 0):.2f}",
+                                f"{backtest_result.get('calmar_ratio', 0):.2f}",
+                                f"₹{backtest_result.get('total_costs', 0):,.2f}",
+                                f"{backtest_result.get('cost_pct_of_pnl', 0):.1f}%"
+                            ]
+                        })
+                        st.dataframe(bt_stats, use_container_width=True, hide_index=True)
+                else:
+                    st.warning(f"Backtesting: {backtest_result.get('error', 'Unknown error')}")
+
+                # ═══════════════════════════════════════════════════════════════
+                # NEWS FEED
+                # ═══════════════════════════════════════════════════════════════
+
+                st.markdown("---")
+                st.markdown("### 📰 Latest News")
+
+                with st.spinner("Loading news..."):
+                    news = get_stock_news(ai_symbol, count=8)
+
+                if news and 'error' not in news[0]:
+                    news_col1, news_col2 = st.columns(2)
+
+                    for idx, item in enumerate(news):
+                        col = news_col1 if idx % 2 == 0 else news_col2
+                        with col:
+                            st.markdown(f"""
+                            <div style='background: white; padding: 15px; border-radius: 10px; margin: 10px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                                <a href="{item['link']}" target="_blank" style='text-decoration: none;'>
+                                    <h5 style='color: #2d3748; margin: 0 0 8px 0;'>{item['title']}</h5>
+                                </a>
+                                <p style='color: #718096; font-size: 0.85rem; margin: 0;'>
+                                    📰 {item['publisher']} • 🕐 {item['date']}
+                                </p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                else:
+                    st.info("📰 No recent news available for this stock.")
+
     else:
         create_info_card(
             "AI Deep Analysis",
@@ -1261,6 +2211,68 @@ elif page == "🎯 Smart Screener":
             if 'selected_filter' in st.session_state:
                 del st.session_state.selected_filter
             st.rerun()
+
+    # Advanced Filters Section
+    with st.expander("🔬 Advanced Technical Filters", expanded=False):
+        adv_col1, adv_col2, adv_col3, adv_col4 = st.columns(4)
+
+        with adv_col1:
+            rsi_filter = st.selectbox(
+                "📊 RSI Filter",
+                ["All", "Oversold (RSI < 30)", "Neutral (30-70)", "Overbought (RSI > 70)", "Bullish Divergence Zone (30-50)"],
+                help="Filter stocks by RSI levels"
+            )
+
+        with adv_col2:
+            macd_filter = st.selectbox(
+                "📈 MACD Filter",
+                ["All", "Bullish (MACD > Signal)", "Bearish (MACD < Signal)", "Bullish Crossover", "Near Crossover"],
+                help="Filter by MACD signals"
+            )
+
+        with adv_col3:
+            trend_filter = st.selectbox(
+                "📉 Trend Filter",
+                ["All", "Strong Uptrend", "Uptrend", "Sideways", "Downtrend", "Strong Downtrend"],
+                help="Filter by price trend relative to moving averages"
+            )
+
+        with adv_col4:
+            volume_filter = st.selectbox(
+                "📊 Volume Filter",
+                ["All", "High Volume (>1.5x avg)", "Above Average (>1x)", "Low Volume (<0.7x)"],
+                help="Filter by relative volume"
+            )
+
+        adv_col5, adv_col6, adv_col7, adv_col8 = st.columns(4)
+
+        with adv_col5:
+            pattern_filter = st.selectbox(
+                "🔮 Pattern Filter",
+                ["All", "Bullish Patterns Only", "Bearish Patterns Only", "Reversal Patterns", "Continuation Patterns"],
+                help="Filter by detected chart patterns"
+            )
+
+        with adv_col6:
+            pe_filter = st.selectbox(
+                "💰 P/E Ratio",
+                ["All", "Undervalued (PE < 15)", "Fair Value (15-25)", "Growth (25-40)", "Premium (> 40)"],
+                help="Filter by Price to Earnings ratio"
+            )
+
+        with adv_col7:
+            momentum_filter = st.selectbox(
+                "⚡ Momentum",
+                ["All", "Strong Bullish", "Bullish", "Neutral", "Bearish", "Strong Bearish"],
+                help="Filter by momentum indicators"
+            )
+
+        with adv_col8:
+            ai_analysis_mode = st.selectbox(
+                "🤖 AI Analysis Mode",
+                ["Standard", "Deep Analysis (Slower)", "Quick Scan"],
+                help="Choose AI analysis depth - deeper analysis takes longer but is more accurate"
+            )
 
     # Info about screening
     if screening_mode == "📊 Sector Focus":
@@ -1337,8 +2349,93 @@ elif page == "🎯 Smart Screener":
                 if len(stock_data) < 50:
                     continue
 
+                # Get latest values for filtering
+                latest = stock_data.iloc[-1]
+                rsi_value = latest.get('RSI14', 50)
+                macd_value = latest.get('MACD', 0)
+                macd_signal = latest.get('MACD_Signal', 0)
+                volume_ratio = latest.get('Volume_Ratio', 1.0)
+                current_price = latest['Close']
+                sma20 = latest.get('SMA20', current_price)
+                sma50 = latest.get('SMA50', current_price)
+                sma200 = latest.get('SMA200', current_price)
+
+                # Calculate trend
+                if current_price > sma20 > sma50 > sma200:
+                    trend = "Strong Uptrend"
+                elif current_price > sma50 > sma200:
+                    trend = "Uptrend"
+                elif current_price < sma20 < sma50 < sma200:
+                    trend = "Strong Downtrend"
+                elif current_price < sma50:
+                    trend = "Downtrend"
+                else:
+                    trend = "Sideways"
+
+                # Calculate momentum
+                momentum_val = latest.get('Momentum', 0)
+                roc = latest.get('ROC', 0)
+                if rsi_value > 60 and macd_value > macd_signal and momentum_val > 0:
+                    momentum = "Strong Bullish"
+                elif rsi_value > 50 and macd_value > 0:
+                    momentum = "Bullish"
+                elif rsi_value < 40 and macd_value < macd_signal and momentum_val < 0:
+                    momentum = "Strong Bearish"
+                elif rsi_value < 50 and macd_value < 0:
+                    momentum = "Bearish"
+                else:
+                    momentum = "Neutral"
+
+                # Apply advanced filters
+                # RSI Filter
+                if rsi_filter != "All":
+                    if "Oversold" in rsi_filter and rsi_value >= 30:
+                        continue
+                    elif "Overbought" in rsi_filter and rsi_value <= 70:
+                        continue
+                    elif "Neutral" in rsi_filter and (rsi_value < 30 or rsi_value > 70):
+                        continue
+                    elif "Bullish Divergence" in rsi_filter and (rsi_value < 30 or rsi_value > 50):
+                        continue
+
+                # MACD Filter
+                if macd_filter != "All":
+                    if "Bullish (MACD > Signal)" in macd_filter and macd_value <= macd_signal:
+                        continue
+                    elif "Bearish (MACD < Signal)" in macd_filter and macd_value >= macd_signal:
+                        continue
+
+                # Trend Filter
+                if trend_filter != "All" and trend_filter != trend:
+                    continue
+
+                # Volume Filter
+                if volume_filter != "All":
+                    if "High Volume" in volume_filter and volume_ratio < 1.5:
+                        continue
+                    elif "Above Average" in volume_filter and volume_ratio < 1.0:
+                        continue
+                    elif "Low Volume" in volume_filter and volume_ratio >= 0.7:
+                        continue
+
+                # Momentum Filter
+                if momentum_filter != "All" and momentum_filter != momentum:
+                    continue
+
                 # Get fundamentals
                 fundamentals = get_fundamentals(stock_symbol)
+
+                # P/E Filter
+                pe_ratio = fundamentals.get('PE', 0)
+                if pe_filter != "All" and pe_ratio:
+                    if "Undervalued" in pe_filter and pe_ratio >= 15:
+                        continue
+                    elif "Fair Value" in pe_filter and (pe_ratio < 15 or pe_ratio > 25):
+                        continue
+                    elif "Growth" in pe_filter and (pe_ratio < 25 or pe_ratio > 40):
+                        continue
+                    elif "Premium" in pe_filter and pe_ratio <= 40:
+                        continue
 
                 # Get market cap
                 market_cap = fundamentals.get('MarketCap', 0) / 1e7  # Convert to Crores
@@ -1385,6 +2482,10 @@ elif page == "🎯 Smart Screener":
                         'Stop Loss': stop_loss,
                         'Potential Return %': potential_return,
                         'R/R Ratio': entry_targets['R/R Ratio'],
+                        'RSI': rsi_value,
+                        'Trend': trend,
+                        'Momentum': momentum,
+                        'Volume': f"{volume_ratio:.1f}x",
                         'Confidence': confidence,
                         'Recommendation': recommendation,
                         'Strength': entry_targets['Strength']
@@ -1493,12 +2594,16 @@ elif page == "🎯 Smart Screener":
         df_formatted['Stop Loss'] = df_formatted['Stop Loss'].apply(lambda x: f"₹{x:.2f}")
         df_formatted['Potential Return %'] = df_formatted['Potential Return %'].apply(lambda x: f"{x:.1f}%")
         df_formatted['R/R Ratio'] = df_formatted['R/R Ratio'].apply(lambda x: f"{x:.2f}")
+        df_formatted['RSI'] = df_formatted['RSI'].apply(lambda x: f"{x:.0f}")
         df_formatted['Confidence'] = df_formatted['Confidence'].apply(lambda x: f"{x:.1%}")
 
-        # Reorder columns for better display
-        column_order = ['Symbol', 'Market Cap', 'Market Cap (Cr)', 'Current Price', 'Entry Price',
+        # Reorder columns for better display - include new technical columns
+        column_order = ['Symbol', 'Market Cap', 'Current Price', 'Entry Price',
                        'Target Price', 'Stop Loss', 'Potential Return %', 'R/R Ratio',
+                       'RSI', 'Trend', 'Momentum', 'Volume',
                        'Confidence', 'Recommendation', 'Strength']
+        # Only use columns that exist
+        column_order = [c for c in column_order if c in df_formatted.columns]
         df_formatted = df_formatted[column_order]
 
         st.dataframe(df_formatted, use_container_width=True, hide_index=True)
@@ -1792,6 +2897,101 @@ elif page == "💼 Portfolio Manager":
 
                 fig_corr = create_heatmap(corr_matrix, "Portfolio Correlation")
                 st.plotly_chart(fig_corr, use_container_width=True)
+
+            # ═══════════════════════════════════════════════════════════════
+            # PORTFOLIO POSITION SIZING & RISK ALLOCATION
+            # ═══════════════════════════════════════════════════════════════
+
+            st.markdown("### 💰 Portfolio Position Sizing")
+
+            ps_col1, ps_col2 = st.columns([1, 3])
+
+            with ps_col1:
+                portfolio_capital = st.number_input("💵 Total Portfolio Capital (₹)",
+                                                   min_value=50000, max_value=100000000,
+                                                   value=500000, step=50000, key="portfolio_capital")
+                total_risk_budget = st.slider("⚠️ Total Risk Budget (%)", 5.0, 20.0, 10.0, 1.0, key="risk_budget")
+
+            with ps_col2:
+                # Calculate position sizing for each stock
+                position_data = []
+                total_allocated = 0
+
+                for _, row in df_portfolio.iterrows():
+                    symbol = row['Symbol']
+                    try:
+                        stock_data = load_stock_data(symbol, start_date, end_date)
+                        if stock_data is not None and len(stock_data) >= 20:
+                            pos_result = calculate_position_size(stock_data, portfolio_capital / len(df_portfolio),
+                                                                 total_risk_budget / len(df_portfolio), 2.0)
+                            if 'error' not in pos_result:
+                                position_data.append({
+                                    'Symbol': symbol,
+                                    'Entry Price': pos_result['current_price'],
+                                    'Stop Loss': pos_result['stop_loss_price'],
+                                    'Take Profit': pos_result['take_profit_2r'],
+                                    'Shares': pos_result['position_size_shares'],
+                                    'Position Value': pos_result['position_value'],
+                                    'Risk (₹)': pos_result['risk_amount'],
+                                    'Volatility': pos_result['volatility_level']
+                                })
+                                total_allocated += pos_result['position_value']
+                    except:
+                        continue
+
+                if position_data:
+                    df_positions = pd.DataFrame(position_data)
+
+                    # Summary cards
+                    pos_sum_col1, pos_sum_col2, pos_sum_col3 = st.columns(3)
+
+                    with pos_sum_col1:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #667eea, #764ba2); padding: 15px; border-radius: 10px; text-align: center;'>
+                            <h4 style='color: white; margin: 0;'>Total Allocated</h4>
+                            <h2 style='color: white; margin: 5px 0;'>₹{total_allocated:,.0f}</h2>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with pos_sum_col2:
+                        total_risk = df_positions['Risk (₹)'].sum()
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #f56565, #c53030); padding: 15px; border-radius: 10px; text-align: center;'>
+                            <h4 style='color: white; margin: 0;'>Total Risk</h4>
+                            <h2 style='color: white; margin: 5px 0;'>₹{total_risk:,.0f}</h2>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    with pos_sum_col3:
+                        cash_remaining = portfolio_capital - total_allocated
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, #48bb78, #38a169); padding: 15px; border-radius: 10px; text-align: center;'>
+                            <h4 style='color: white; margin: 0;'>Cash Remaining</h4>
+                            <h2 style='color: white; margin: 5px 0;'>₹{cash_remaining:,.0f}</h2>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # Position sizing table
+                    st.markdown("#### 📋 Position Sizing Details")
+                    df_pos_display = df_positions.copy()
+                    df_pos_display['Entry Price'] = df_pos_display['Entry Price'].apply(lambda x: f"₹{x:.2f}")
+                    df_pos_display['Stop Loss'] = df_pos_display['Stop Loss'].apply(lambda x: f"₹{x:.2f}")
+                    df_pos_display['Take Profit'] = df_pos_display['Take Profit'].apply(lambda x: f"₹{x:.2f}")
+                    df_pos_display['Position Value'] = df_pos_display['Position Value'].apply(lambda x: f"₹{x:,.0f}")
+                    df_pos_display['Risk (₹)'] = df_pos_display['Risk (₹)'].apply(lambda x: f"₹{x:,.0f}")
+
+                    st.dataframe(df_pos_display, use_container_width=True, hide_index=True)
+
+                    # Position allocation pie chart
+                    fig_alloc = go.Figure(data=[go.Pie(
+                        labels=df_positions['Symbol'],
+                        values=df_positions['Position Value'],
+                        hole=.4,
+                        marker_colors=['#667eea', '#f093fb', '#4facfe', '#43e97b', '#f56565',
+                                       '#ed8936', '#9f7aea', '#38b2ac', '#fc8181', '#68d391']
+                    )])
+                    fig_alloc.update_layout(title="Portfolio Allocation by Position Value", height=350)
+                    st.plotly_chart(fig_alloc, use_container_width=True)
 
             # Portfolio Optimization
             if len(returns_dict) >= 2:

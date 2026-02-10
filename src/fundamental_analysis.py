@@ -242,3 +242,44 @@ def calculate_intrinsic_value(fundamentals: dict, discount_rate: float = 0.10, g
             'AverageIntrinsic': 0
         }
 
+
+def get_stock_news(symbol: str, count: int = 10) -> list:
+    """
+    Get recent news for a stock using yfinance
+
+    Args:
+        symbol: Stock symbol (e.g., 'RELIANCE.NS')
+        count: Number of news items to retrieve
+
+    Returns:
+        List of news items with title, publisher, link, date, summary
+    """
+    from datetime import datetime
+
+    try:
+        ticker = yf.Ticker(symbol)
+        news_list = ticker.news[:count] if ticker.news else []
+
+        formatted_news = []
+        for item in news_list:
+            publish_time = item.get('providerPublishTime', 0)
+            if publish_time:
+                date_str = datetime.fromtimestamp(publish_time).strftime('%Y-%m-%d %H:%M')
+            else:
+                date_str = 'Unknown'
+
+            formatted_news.append({
+                'title': item.get('title', 'No title'),
+                'publisher': item.get('publisher', 'Unknown'),
+                'link': item.get('link', ''),
+                'date': date_str,
+                'summary': item.get('summary', 'No summary available'),
+                'thumbnail': item.get('thumbnail', {}).get('resolutions', [{}])[0].get('url', '') if item.get('thumbnail') else ''
+            })
+
+        return formatted_news
+
+    except Exception as e:
+        return [{'error': str(e), 'title': 'Error loading news', 'publisher': '', 'link': '', 'date': '', 'summary': str(e)}]
+
+
