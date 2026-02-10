@@ -5,6 +5,20 @@ Portfolio Optimizer Module for TradeGenius AI
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
+import signal
+import threading
+
+try:
+    from .logger import get_logger
+except ImportError:
+    import logging
+    def get_logger(name):
+        return logging.getLogger(name)
+
+logger = get_logger('portfolio_optimizer')
+
+# Default timeout for optimization (seconds)
+OPTIMIZER_TIMEOUT = 30
 
 
 def optimize_portfolio(returns_df, risk_free_rate=0.05, target_return=None):
@@ -60,16 +74,22 @@ def optimize_portfolio(returns_df, risk_free_rate=0.05, target_return=None):
     # Initial guess (equal weights)
     initial_weights = np.array([1/n_assets] * n_assets)
 
-    # Optimize for maximum Sharpe ratio
-    result = minimize(
-        negative_sharpe,
-        initial_weights,
-        method='SLSQP',
-        bounds=bounds,
-        constraints=constraints
-    )
-
-    optimal_weights = result.x
+    # Optimize for maximum Sharpe ratio with iteration limit to prevent hangs
+    try:
+        result = minimize(
+            negative_sharpe,
+            initial_weights,
+            method='SLSQP',
+            bounds=bounds,
+            constraints=constraints,
+            options={'maxiter': 1000, 'ftol': 1e-9}
+        )
+        optimal_weights = result.x
+        success = result.success
+    except Exception as e:
+        logger.warning(f"Portfolio optimization failed: {e}. Using equal weights.")
+        optimal_weights = initial_weights
+        success = False
 
     # Calculate portfolio statistics
     portfolio_ret = portfolio_return(optimal_weights)
@@ -81,7 +101,7 @@ def optimize_portfolio(returns_df, risk_free_rate=0.05, target_return=None):
         'expected_return': portfolio_ret,
         'volatility': portfolio_vol,
         'sharpe_ratio': sharpe,
-        'success': result.success
+        'success': success
     }
 
 
@@ -238,13 +258,17 @@ def minimum_variance_portfolio(returns_df):
     bounds = tuple((0, 1) for _ in range(n_assets))
     initial_weights = np.array([1/n_assets] * n_assets)
 
-    result = minimize(
-        portfolio_variance,
-        initial_weights,
-        method='SLSQP',
-        bounds=bounds,
-        constraints=constraints
-    )
-
-    return dict(zip(assets, result.x))
+    try:
+        result = minimize(
+            portfolio_variance,
+            initial_weights,
+            method='SLSQP',
+            bounds=bounds,
+            constraints=constraints,
+            options={'maxiter': 1000, 'ftol': 1e-9}
+        )
+        return dict(zip(assets, result.x))
+    except Exception as e:
+        logger.warning(f"Minimum variance optimization failed: {e}. Using equal weights.")
+        return dict(zip(assets, initial_weights))
 

@@ -1,5 +1,5 @@
 """
-Quick Start Script for AI Trading Lab PRO+ v2.0
+Quick Start Script for AI Trading Lab PRO+ v4.0.0
 Launches the modern UI application
 """
 
@@ -40,7 +40,7 @@ def check_dependencies():
 def main():
     """Main function to launch the app"""
     print("=" * 60)
-    print("🚀 AI Trading Lab PRO+ v2.0")
+    print("🚀 AI Trading Lab PRO+ v4.0.0")
     print("=" * 60)
     print()
 

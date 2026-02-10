@@ -1,5 +1,8 @@
 # TradeGenius AI - Requirements
 # ================================
+# Version 4.0.0 - Modern UI with User Profiles & Enhanced Analytics
+# CPU-Only Configuration for Better Compatibility
+# Install with: pip install -r requirements.txt
 
 # Core
 streamlit>=1.28.0
@@ -18,17 +21,38 @@ matplotlib>=3.7.0
 scikit-learn>=1.3.0
 xgboost>=1.7.0
 
-# Deep Learning (Optional - for LSTM)
-tensorflow>=2.13.0
-keras>=2.13.0
+# Deep Learning (Keras, Transformers, Autoencoders, LSTM, Transformers) - CPU Only
+# Using tensorflow-cpu for CPU-only inference (no GPU dependencies)
+tensorflow-cpu>=2.15.0
+keras>=2.15.0
+transformers>=4.30.0
 
-# Technical Analysis
+# PyTorch CPU-only
+# Install from PyTorch CPU-only index for CPU wheels
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0
+
+# Backtesting & Trading
+backtrader>=1.9.75
+vectorbt>=0.25.0
+
+# Zerodha Integration
+kiteconnect>=3.9.0
+
+# Technical Analysis & Volatility
 scipy>=1.11.0
+# `arch` (GARCH) is optional — remove if you don't use GARCH models to avoid extra deps
+# arch>=5.0.0
 
 # Utilities
 python-dateutil>=2.8.0
+pytz>=2023.0
 
-# Optional: Sentiment Analysis
-# transformers>=4.30.0
-# torch>=2.0.0
+# Hyperparameter Optimization
+optuna>=3.0.0
 
+# NEW in v4.0.0: User Profile Management & Authentication
+# (Built-in with Streamlit session management - no extra deps needed)
+
+# NEW in v4.0.0: Enhanced UI Components
+# (All handled by Streamlit markdown & CSS - no extra deps needed)

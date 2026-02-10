@@ -8,6 +8,15 @@ import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta
 
+try:
+    from .logger import get_logger
+except ImportError:
+    import logging
+    def get_logger(name):
+        return logging.getLogger(name)
+
+logger = get_logger('data_loader')
+
 
 def load_stock_data(symbol: str, start_date=None, end_date=None, period: str = "3y") -> pd.DataFrame:
     """
@@ -23,6 +32,12 @@ def load_stock_data(symbol: str, start_date=None, end_date=None, period: str = "
         DataFrame with OHLCV data
     """
     try:
+        # Normalize symbol input (append .NS for NSE by default if user omitted)
+        try:
+            from src.symbol_utils import normalize_symbol
+            symbol = normalize_symbol(symbol)
+        except Exception:
+            pass
         ticker = yf.Ticker(symbol)
 
         if start_date and end_date:
@@ -65,7 +80,7 @@ def load_stock_data(symbol: str, start_date=None, end_date=None, period: str = "
         return df
 
     except Exception as e:
-        print(f"Error loading data for {symbol}: {e}")
+        logger.error(f"Error loading data for {symbol}: {e}")
         return None
 
 
@@ -84,7 +99,7 @@ def get_stock_info(symbol: str) -> dict:
         info = ticker.info
         return info
     except Exception as e:
-        print(f"Error getting info for {symbol}: {e}")
+        logger.error(f"Error getting info for {symbol}: {e}")
         return {}
 
 
@@ -103,7 +118,12 @@ def get_multiple_stocks(symbols: list, start_date=None, end_date=None, period: s
     """
     data = {}
     for symbol in symbols:
-        df = load_stock_data(symbol, start_date, end_date, period)
+        try:
+            from src.symbol_utils import normalize_symbol
+            s = normalize_symbol(symbol)
+        except Exception:
+            s = symbol
+        df = load_stock_data(s, start_date, end_date, period)
         if df is not None and not df.empty:
             data[symbol] = df
     return data

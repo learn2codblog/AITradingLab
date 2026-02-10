@@ -1,9 +1,9 @@
 @echo off
-REM Quick Start Script for AI Trading Lab PRO+ v2.0
+REM Quick Start Script for AI Trading Lab PRO+ v4.0.0
 REM Windows Batch File
 
 echo ============================================================
-echo   AI Trading Lab PRO+ v2.0
+echo   AI Trading Lab PRO+ v4.0.0
 echo   Modern AI-Powered Trading Platform
 echo ============================================================
 echo.

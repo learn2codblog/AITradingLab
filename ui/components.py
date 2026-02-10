@@ -8,30 +8,71 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 
+def get_theme_colors():
+    """Get theme-aware colors based on current dark mode setting"""
+    dark_mode = st.session_state.get('dark_mode_toggle', False)
+
+    if dark_mode:
+        return {
+            'gradient_bg': 'linear-gradient(135deg, #1e293b, #334155)',
+            'header_bg': 'linear-gradient(135deg, #1e293b, #334155)',
+            'card_bg': '#1e293b',
+            'text': '#e2e8f0',
+            'text_secondary': '#94a3b8',
+            'border': '#475569',
+            'hover': '#334155'
+        }
+    else:
+        return {
+            'gradient_bg': 'linear-gradient(135deg, #667eea, #764ba2)',
+            'header_bg': 'linear-gradient(135deg, #667eea, #764ba2)',
+            'card_bg': '#ffffff',
+            'text': '#1a202c',
+            'text_secondary': '#718096',
+            'border': '#e2e8f0',
+            'hover': '#f7fafc'
+        }
+
+
 def create_metric_card(label, value, delta=None, icon="📊", color="#667eea"):
     """Create a styled metric card with proper display"""
+    # Get current theme
+    dark_mode = st.session_state.get('dark_mode_toggle', False)
+
+    # Theme-aware colors
+    if dark_mode:
+        card_bg = "#1e293b"
+        text_color = "#e2e8f0"
+        label_color = "#94a3b8"
+        border_color = color  # Keep the accent color
+    else:
+        card_bg = "white"
+        text_color = "#2d3748"
+        label_color = "#718096"
+        border_color = color
+
     # Create a custom HTML card that displays everything properly
     delta_html = ""
     if delta:
-        delta_color = "#48bb78" if str(delta).startswith("+") or float(str(delta).replace("%", "").replace("+", "").replace("-", "")) > 0 else "#f56565"
+        delta_color = "#10b981" if str(delta).startswith("+") or (str(delta).replace("%", "").replace("+", "").replace("-", "").isdigit() and float(str(delta).replace("%", "").replace("+", "").replace("-", "")) > 0) else "#ef4444"
         delta_html = f"<div style='font-size: 0.9rem; color: {delta_color}; margin-top: 5px;'>{delta}</div>"
 
     st.markdown(f"""
     <div style='
         text-align: center;
         padding: 20px;
-        background: white;
+        background: {card_bg};
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        border-top: 4px solid {color};
+        border-top: 4px solid {border_color};
         min-height: 140px;
         display: flex;
         flex-direction: column;
         justify-content: center;
     '>
         <div style='font-size: 2.5rem; margin-bottom: 8px;'>{icon}</div>
-        <div style='font-size: 0.85rem; color: #718096; font-weight: 600; margin-bottom: 8px; text-transform: uppercase;'>{label}</div>
-        <div style='font-size: 1.8rem; font-weight: 700; color: #2d3748; word-wrap: break-word;'>{value}</div>
+        <div style='font-size: 0.85rem; color: {label_color}; font-weight: 600; margin-bottom: 8px; text-transform: uppercase;'>{label}</div>
+        <div style='font-size: 1.8rem; font-weight: 700; color: {text_color}; word-wrap: break-word;'>{value}</div>
         {delta_html}
     </div>
     """, unsafe_allow_html=True)
@@ -39,31 +80,66 @@ def create_metric_card(label, value, delta=None, icon="📊", color="#667eea"):
 
 def create_signal_badge(signal_type, text):
     """Create a styled signal badge"""
-    colors = {
-        'bullish': '#c6f6d5',
-        'bearish': '#fed7d7',
-        'neutral': '#e2e8f0',
-        'buy': '#9ae6b4',
-        'sell': '#fc8181',
-        'hold': '#fbd38d'
-    }
+    # Get current theme
+    dark_mode = st.session_state.get('dark_mode_toggle', False)
 
-    text_colors = {
-        'bullish': '#22543d',
-        'bearish': '#742a2a',
-        'neutral': '#2d3748',
-        'buy': '#22543d',
-        'sell': '#742a2a',
-        'hold': '#744210'
-    }
+    if dark_mode:
+        colors = {
+            'bullish': '#1e293b',
+            'bearish': '#1e293b',
+            'neutral': '#1e293b',
+            'buy': '#1e293b',
+            'sell': '#1e293b',
+            'hold': '#1e293b'
+        }
+
+        text_colors = {
+            'bullish': '#10b981',
+            'bearish': '#ef4444',
+            'neutral': '#94a3b8',
+            'buy': '#10b981',
+            'sell': '#ef4444',
+            'hold': '#f59e0b'
+        }
+
+        border_colors = {
+            'bullish': '#10b981',
+            'bearish': '#ef4444',
+            'neutral': '#94a3b8',
+            'buy': '#10b981',
+            'sell': '#ef4444',
+            'hold': '#f59e0b'
+        }
+    else:
+        colors = {
+            'bullish': '#c6f6d5',
+            'bearish': '#fed7d7',
+            'neutral': '#e2e8f0',
+            'buy': '#9ae6b4',
+            'sell': '#fc8181',
+            'hold': '#fbd38d'
+        }
+
+        text_colors = {
+            'bullish': '#22543d',
+            'bearish': '#742a2a',
+            'neutral': '#2d3748',
+            'buy': '#22543d',
+            'sell': '#742a2a',
+            'hold': '#744210'
+        }
+
+        border_colors = text_colors  # Same as text colors for light mode
 
     bg_color = colors.get(signal_type.lower(), '#e2e8f0')
     text_color = text_colors.get(signal_type.lower(), '#2d3748')
+    border_color = border_colors.get(signal_type.lower(), '#2d3748')
 
     return f"""
     <span style='
         background: {bg_color};
         color: {text_color};
+        border: 1px solid {border_color};
         padding: 8px 16px;
         border-radius: 20px;
         font-weight: 600;
@@ -75,19 +151,40 @@ def create_signal_badge(signal_type, text):
 
 def create_info_card(title, content, icon="ℹ️", type="info"):
     """Create an information card with styling"""
-    colors = {
-        'info': '#bee3f8',
-        'success': '#c6f6d5',
-        'warning': '#feebc8',
-        'error': '#fed7d7'
-    }
+    # Get current theme
+    dark_mode = st.session_state.get('dark_mode_toggle', False)
 
-    border_colors = {
-        'info': '#3182ce',
-        'success': '#38a169',
-        'warning': '#d69e2e',
-        'error': '#e53e3e'
-    }
+    # Theme-aware colors
+    if dark_mode:
+        colors = {
+            'info': '#1e293b',
+            'success': '#1e293b',
+            'warning': '#1e293b',
+            'error': '#1e293b'
+        }
+        border_colors = {
+            'info': '#3b82f6',
+            'success': '#10b981',
+            'warning': '#f59e0b',
+            'error': '#ef4444'
+        }
+        title_color = "#e2e8f0"
+        text_color = "#94a3b8"
+    else:
+        colors = {
+            'info': '#bee3f8',
+            'success': '#c6f6d5',
+            'warning': '#feebc8',
+            'error': '#fed7d7'
+        }
+        border_colors = {
+            'info': '#3182ce',
+            'success': '#38a169',
+            'warning': '#d69e2e',
+            'error': '#e53e3e'
+        }
+        title_color = "#2d3748"
+        text_color = "#4a5568"
 
     bg = colors.get(type, colors['info'])
     border = border_colors.get(type, border_colors['info'])
@@ -100,8 +197,8 @@ def create_info_card(title, content, icon="ℹ️", type="info"):
         padding: 20px;
         margin: 15px 0;
     '>
-        <h3 style='margin:0; color: #2d3748;'>{icon} {title}</h3>
-        <p style='margin: 10px 0 0 0; color: #4a5568;'>{content}</p>
+        <h3 style='margin:0; color: {title_color};'>{icon} {title}</h3>
+        <p style='margin: 10px 0 0 0; color: {text_color};'>{content}</p>
     </div>
     """, unsafe_allow_html=True)
 
