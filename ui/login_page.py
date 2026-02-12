@@ -169,16 +169,24 @@ class LoginPageUI:
                 help="Sign in with Gmail"
             )
             if gmail_btn:
-                st.info("""
-                ### Gmail Login Setup
-                
-                **Environment Variables Required:**
-                - `GMAIL_CLIENT_ID`
-                - `GMAIL_CLIENT_SECRET`
-                - `GMAIL_REDIRECT_URI`
-                
-                Get credentials from [Google Cloud Console](https://console.cloud.google.com/)
-                """)
+                # If client id is configured, open the OAuth consent URL; otherwise show setup info
+                import os as _os
+                client_id = _os.getenv('GMAIL_CLIENT_ID')
+                if not client_id or 'your-client-id' in client_id:
+                    st.info("""
+                    ### Gmail Login Setup
+                    
+                    **Environment Variables Required:**
+                    - `GMAIL_CLIENT_ID`
+                    - `GMAIL_CLIENT_SECRET`
+                    - `GMAIL_REDIRECT_URI`
+                    
+                    Get credentials from [Google Cloud Console](https://console.cloud.google.com/)
+                    """)
+                else:
+                    auth_url = auth_manager.get_auth_url('gmail')
+                    # Provide a direct link/button to begin the OAuth flow
+                    st.markdown(f"<a href=\"{auth_url}\" target=\"_self\" class=\"login-btn\">Sign in with Google</a>", unsafe_allow_html=True)
         
         # Microsoft
         with col2:
@@ -189,17 +197,23 @@ class LoginPageUI:
                 help="Sign in with Microsoft (Outlook)"
             )
             if microsoft_btn:
-                st.info("""
-                ### Microsoft (Outlook) Login Setup
-                
-                **Environment Variables Required:**
-                - `MICROSOFT_CLIENT_ID`
-                - `MICROSOFT_CLIENT_SECRET`
-                - `MICROSOFT_REDIRECT_URI`
-                - `MICROSOFT_TENANT_ID` (optional, defaults to 'common')
-                
-                Get credentials from [Azure Portal](https://portal.azure.com/)
-                """)
+                import os as _os
+                client_id = _os.getenv('MICROSOFT_CLIENT_ID')
+                if not client_id or 'your-client-id' in client_id:
+                    st.info("""
+                    ### Microsoft (Outlook) Login Setup
+                    
+                    **Environment Variables Required:**
+                    - `MICROSOFT_CLIENT_ID`
+                    - `MICROSOFT_CLIENT_SECRET`
+                    - `MICROSOFT_REDIRECT_URI`
+                    - `MICROSOFT_TENANT_ID` (optional, defaults to 'common')
+                    
+                    Get credentials from [Azure Portal](https://portal.azure.com/)
+                    """)
+                else:
+                    auth_url = auth_manager.get_auth_url('microsoft')
+                    st.markdown(f"<a href=\"{auth_url}\" target=\"_self\" class=\"login-btn\">Sign in with Microsoft</a>", unsafe_allow_html=True)
         
         # Yahoo
         with col3:
@@ -210,16 +224,22 @@ class LoginPageUI:
                 help="Sign in with Yahoo"
             )
             if yahoo_btn:
-                st.info("""
-                ### Yahoo Mail Login Setup
-                
-                **Environment Variables Required:**
-                - `YAHOO_CLIENT_ID`
-                - `YAHOO_CLIENT_SECRET`
-                - `YAHOO_REDIRECT_URI`
-                
-                Get credentials from [Yahoo Developer Network](https://developer.yahoo.com/)
-                """)
+                import os as _os
+                client_id = _os.getenv('YAHOO_CLIENT_ID')
+                if not client_id or 'your-client-id' in client_id:
+                    st.info("""
+                    ### Yahoo Mail Login Setup
+                    
+                    **Environment Variables Required:**
+                    - `YAHOO_CLIENT_ID`
+                    - `YAHOO_CLIENT_SECRET`
+                    - `YAHOO_REDIRECT_URI`
+                    
+                    Get credentials from [Yahoo Developer Network](https://developer.yahoo.com/)
+                    """)
+                else:
+                    auth_url = auth_manager.get_auth_url('yahoo')
+                    st.markdown(f"<a href=\"{auth_url}\" target=\"_self\" class=\"login-btn\">Sign in with Yahoo</a>", unsafe_allow_html=True)
         
         # Return which provider was clicked
         if gmail_btn:
@@ -305,7 +325,10 @@ class LoginPageUI:
                     success, message = auth_manager.login_email_user(email, password)
                     if success:
                         st.success(message)
-                        return True, "email_login", email, ""
+                        st.balloons()
+                        import time
+                        time.sleep(0.5)
+                        st.rerun()
                     else:
                         st.error(message)
                 else:
@@ -368,6 +391,16 @@ class LoginPageUI:
                     )
                     if success:
                         st.success(message)
+                        st.info("🔄 Logging in with your new account...")
+                        import time
+                        time.sleep(1)
+                        # Automatically login after registration
+                        login_success, _ = auth_manager.login_email_user(reg_email, reg_password)
+                        if login_success:
+                            st.success("✅ Account created and logged in!")
+                            st.balloons()
+                            time.sleep(0.5)
+                            st.rerun()
                     else:
                         st.error(message)
         
@@ -486,20 +519,27 @@ def render_login_page(auth_manager) -> bool:
         if email_result[0]:  # If email login returned True
             st.success("✅ Login successful! Redirecting...")
             st.balloons()
-            return True
+            # Force a rerun so the main app picks up the updated session state
+            import time
+            time.sleep(0.5)
+            st.rerun()
         
-        # Demo login
-        demo_clicked, email, name = login_ui.show_demo_login()
-        
-        # Handle demo login
-        if demo_clicked:
-            if email.strip() and name.strip():
-                if auth_manager.create_demo_user(email, name):
-                    st.success("✅ Login successful! Redirecting...")
-                    st.balloons()
-                    return True
-            else:
-                st.error("❌ Please enter both email and name")
+        # Demo login (only visible if enabled via environment variable)
+        import os as _os
+        if _os.getenv('ENABLE_DEMO_LOGIN', 'false').lower() == 'true':
+            demo_clicked, email, name = login_ui.show_demo_login()
+
+            # Handle demo login
+            if demo_clicked:
+                if email.strip() and name.strip():
+                    if auth_manager.create_demo_user(email, name):
+                        st.success("✅ Login successful! Redirecting...")
+                        st.balloons()
+                        import time
+                        time.sleep(0.5)
+                        st.rerun()
+                else:
+                    st.error("❌ Please enter both email and name")
         
         # Features
         login_ui.show_features_info()

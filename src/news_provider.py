@@ -9,6 +9,14 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import json
 
+# Optional external fetch/parsing
+try:
+    import requests
+    from bs4 import BeautifulSoup
+except Exception:
+    requests = None
+    BeautifulSoup = None
+
 
 class NewsProvider:
     """Handle news fetching and caching"""
@@ -188,8 +196,36 @@ class NewsDisplay:
         
         st.markdown("---")
         
+        # Initialize selected index and prefetch cache in session state
+        if 'selected_news_index' not in st.session_state:
+            st.session_state.selected_news_index = None
+        if 'news_full_texts' not in st.session_state:
+            st.session_state.news_full_texts = {}
+
         # Get news
         news = NewsProvider.get_latest_news(days=days, category=category)
+
+        # Prefetch top-N full articles (configurable via env var NEWS_PREFETCH_TOP_N)
+        try:
+            import os as _os
+            prefetch_n = int(_os.getenv('NEWS_PREFETCH_TOP_N', '3'))
+        except Exception:
+            prefetch_n = 3
+
+        # Only attempt prefetch if requests+bs4 are available
+        if prefetch_n > 0 and requests and BeautifulSoup and news:
+            with st.spinner(f"Prefetching top {prefetch_n} articles..."):
+                for idx, article in enumerate(news[:prefetch_n], 1):
+                    if idx in st.session_state.news_full_texts:
+                        continue
+                    url = article.get('url')
+                    try:
+                        if url and url != '#':
+                            st.session_state.news_full_texts[idx] = NewsDisplay._fetch_article_text(url)
+                        else:
+                            st.session_state.news_full_texts[idx] = article.get('content') or article.get('description') or ''
+                    except Exception:
+                        st.session_state.news_full_texts[idx] = article.get('content') or article.get('description') or ''
         
         if sort_order == "Oldest First":
             news = list(reversed(news))
@@ -201,7 +237,7 @@ class NewsDisplay:
             st.warning("No news found for selected filters")
             return
         
-        # Display news articles
+        # Display news articles. Use index starting at 1 for display consistency.
         for idx, article in enumerate(news, 1):
             NewsDisplay._render_news_card(article, idx)
     
@@ -226,31 +262,55 @@ class NewsDisplay:
         else:
             time_str = f"{time_diff.days} days ago"
         
+        # Use an expander so clicking the headline reveals the full article for any user
         with st.container():
-            col1, col2 = st.columns([0.1, 0.9])
-            
+            col1, col2 = st.columns([0.06, 0.94])
+
             with col1:
                 st.markdown(f"## {color_emoji}")
-            
+
+            # Determine if this article should be expanded by default (sidebar click)
+            selected_idx = st.session_state.get('selected_news_index')
+            expand_default = (selected_idx == index)
+
             with col2:
-                st.markdown(f"### {article['title']}")
-                st.markdown(article['description'])
-                
-                # Footer with metadata
-                col_meta1, col_meta2, col_meta3, col_meta4 = st.columns([2, 2, 2, 2])
-                
-                with col_meta1:
-                    st.caption(f"📰 {article['source']}")
-                
-                with col_meta2:
-                    st.caption(f"🏷️ {article['category']}")
-                
-                with col_meta3:
-                    st.caption(f"⏰ {time_str}")
-                
-                with col_meta4:
-                    st.caption(f"#{index}")
-            
+                with st.expander(f"{article['title']}", expanded=expand_default):
+                    # Prefer a prefetched copy if available for instant display
+                    prefetched = st.session_state.get('news_full_texts', {}).get(index)
+                    url = article.get('url')
+                    if prefetched:
+                        st.write(prefetched)
+                    else:
+                        # If a URL exists and we can fetch, try to fetch full article text
+                        full_text = ''
+                        if url and url != '#' and requests and BeautifulSoup:
+                            try:
+                                full_text = NewsDisplay._fetch_article_text(url)
+                            except Exception:
+                                full_text = article.get('content') or article.get('description') or ''
+                        else:
+                            full_text = article.get('content') or article.get('description') or ''
+
+                        if full_text:
+                            st.write(full_text)
+                        else:
+                            st.write("No full text available. Click the link to read the original article.")
+
+                    # If there's an external URL, show a link button
+                    if url and url != '#':
+                        st.markdown(f"[Read original article]({url})")
+
+                    # Footer with metadata
+                    col_meta1, col_meta2, col_meta3, col_meta4 = st.columns([2, 2, 2, 2])
+                    with col_meta1:
+                        st.caption(f"📰 {article['source']}")
+                    with col_meta2:
+                        st.caption(f"🏷️ {article['category']}")
+                    with col_meta3:
+                        st.caption(f"⏰ {time_str}")
+                    with col_meta4:
+                        st.caption(f"#{index}")
+
             st.markdown("---")
     
     @staticmethod
@@ -316,15 +376,43 @@ class NewsDisplay:
                 )
                 
                 st.metric("Related Articles", related_count)
+
+    @staticmethod
+    @st.cache_data(ttl=3600)
+    def _fetch_article_text(url: str) -> str:
+        """Fetch article full text from URL using requests + BeautifulSoup when available.
+
+        Returns a best-effort plain-text extraction (joins paragraph tags).
+        If requests/bs4 are not available or extraction fails, raises Exception.
+        """
+        if not requests or not BeautifulSoup:
+            raise RuntimeError("requests or BeautifulSoup not available")
+
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        # Simple extraction: join readable <p> text
+        paragraphs = [p.get_text(strip=True) for p in soup.find_all('p') if p.get_text(strip=True)]
+        if not paragraphs:
+            # Fallback: return the raw body text
+            body = soup.body.get_text(separator=' ', strip=True) if soup.body else resp.text
+            return body
+        return '\n\n'.join(paragraphs)
     
     @staticmethod
     def render_news_sidebar():
         """Render compact news widget for sidebar/header"""
         with st.expander("📰 Market News", expanded=False):
-            news = NewsProvider.get_latest_news(days=1)[:3]
-            
-            for article in news:
-                st.markdown(f"**{article['title']}**")
+            news = NewsProvider.get_latest_news(days=1)[:5]
+
+            # Show clickable titles that set the selected index so the main feed can expand it
+            for idx, article in enumerate(news, 1):
+                if st.button(article['title'], key=f"news_sidebar_{idx}"):
+                    st.session_state.selected_news_index = idx
+                    try:
+                        st.experimental_rerun()
+                    except Exception:
+                        pass
                 st.caption(f"{article['source']}")
                 st.markdown("---")
 

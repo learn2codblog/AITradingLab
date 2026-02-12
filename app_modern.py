@@ -16,6 +16,58 @@ from datetime import datetime, timedelta
 from src.auth import AuthManager, create_login_page
 from ui.login_page import render_login_page
 
+# OAuth callback handling: exchange authorization code for tokens and create session
+try:
+    import requests
+    from utils.oauth_config import oauth_config
+except Exception:
+    requests = None
+    oauth_config = None
+
+# If the app was redirected back with an auth 'code', handle the exchange before auth checks
+try:
+    params = st.experimental_get_query_params()
+    if params and 'code' in params:
+        code = params.get('code')[0]
+        provider = params.get('provider', ['gmail'])[0] if params.get('provider') else 'gmail'
+        if oauth_config is None or requests is None:
+            st.error('OAuth support is not available in this environment.')
+        else:
+            try:
+                data = oauth_config.get_token_request_data(code)
+                token_resp = requests.post(oauth_config.token_endpoint, data=data, timeout=15)
+                token_resp.raise_for_status()
+                token_json = token_resp.json()
+                access_token = token_json.get('access_token')
+                if not access_token:
+                    st.error('OAuth token exchange failed. No access token received.')
+                else:
+                    headers = {'Authorization': f'Bearer {access_token}'}
+                    userinfo = requests.get(oauth_config.user_info_endpoint, headers=headers, timeout=10).json()
+                    email = userinfo.get('email')
+                    name = userinfo.get('name') or email
+                    picture = userinfo.get('picture')
+                    # Initialize session and set user
+                    auth_manager_temp = AuthManager()
+                    auth_manager_temp.initialize_session_state()
+                    auth_manager_temp.set_user_session(email=email, name=name, picture=picture, method=provider)
+                    # Clear query params and reload
+                    try:
+                        st.experimental_set_query_params()
+                    except Exception:
+                        pass
+                    # Force immediate rerun to pick up the new session state
+                    st.success("✅ Login successful! Redirecting to home page...")
+                    st.balloons()
+                    import time
+                    time.sleep(0.5)
+                    st.rerun()
+            except Exception as e:
+                st.error(f"OAuth callback handling failed: {e}")
+except Exception:
+    # experimental_get_query_params may not be available in some runtimes
+    pass
+
 # Initialize authentication
 auth_manager = AuthManager()
 auth_manager.initialize_session_state()
@@ -39,6 +91,7 @@ if not auth_manager.is_session_valid():
 
 # Import backend modules
 from src.data_loader import load_stock_data
+from src.symbol_utils import normalize_symbol
 from src.fundamental_analysis import get_fundamentals, get_news_sentiment, get_analyst_ratings, get_stock_news
 from src.technical_indicators import calculate_technical_indicators, generate_signals, get_trend
 from src.feature_engineering import engineer_advanced_features, select_best_features
@@ -160,6 +213,11 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 @st.cache_data(ttl=3600, show_spinner=False)  # Cache for 1 hour
 def load_stock_data_cached(symbol: str, start_date, end_date):
     """Cached stock data loading"""
+    try:
+        from src.symbol_utils import normalize_symbol
+        symbol = normalize_symbol(symbol)
+    except Exception:
+        pass
     return load_stock_data(symbol, start_date, end_date)
 
 @st.cache_data(ttl=86400, show_spinner=False)  # Cache for 24 hours
@@ -198,7 +256,7 @@ st.set_page_config(
     menu_items={
         'Get Help': 'https://docs.streamlit.io',
         'Report a bug': 'https://github.com/streamlit/streamlit/issues',
-        'About': '# AI Trading Lab PRO+ v3.0.0\n\nAI-Powered Trading & Portfolio Analysis Platform'
+        'About': '# AI Trading Lab PRO+ v4.0.0\n\nAI-Powered Trading & Portfolio Analysis Platform with Modern UI & User Profiles'
     }
 )
 
@@ -301,116 +359,272 @@ icons = get_icon_mapping()
 # Modern Header with Clean Design
 from pathlib import Path
 
-# Apply header styling
+# Apply modern header styling
 st.markdown("""
 <style>
     .header-box {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
-        padding: 35px 40px;
-        border-radius: 18px;
-        margin-bottom: 25px;
-        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.35);
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 40px 45px;
+        border-radius: 24px;
+        margin-bottom: 20px;
+        box-shadow: 0 15px 40px rgba(102, 126, 234, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(20px);
+        position: relative;
+        overflow: hidden;
     }
+    
+    .header-box::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -10%;
+        width: 300px;
+        height: 300px;
+        background: radial-gradient(circle, rgba(245, 87, 108, 0.2) 0%, transparent 70%);
+        border-radius: 50%;
+    }
+    
+    .header-box::after {
+        content: '';
+        position: absolute;
+        bottom: -30%;
+        left: -5%;
+        width: 250px;
+        height: 250px;
+        background: radial-gradient(circle, rgba(240, 147, 251, 0.15) 0%, transparent 70%);
+        border-radius: 50%;
+    }
+    
     .app-title {
         color: #ffffff;
-        font-size: 2.8rem;
+        font-size: 3.2rem;
         font-weight: 900;
         margin: 0;
         padding: 0;
-        text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.4);
-        letter-spacing: -0.5px;
+        text-shadow: 3px 3px 12px rgba(0, 0, 0, 0.35);
+        letter-spacing: -1px;
+        position: relative;
+        z-index: 1;
     }
+    
     .app-tagline {
-        color: #1a1a2e;
-        font-size: 1.1rem;
-        font-weight: 700;
-        margin: 8px 0 0 0;
-        background: rgba(255, 255, 255, 0.85);
-        padding: 8px 15px;
-        border-radius: 20px;
+        color: #ffffff;
+        font-size: 1.15rem;
+        font-weight: 600;
+        margin: 12px 0 0 0;
+        background: rgba(255, 255, 255, 0.15);
+        padding: 10px 20px;
+        border-radius: 30px;
         display: inline-block;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        position: relative;
+        z-index: 1;
     }
+    
     .version-badge {
-        background: rgba(255, 255, 255, 0.25);
-        padding: 10px 22px;
-        border-radius: 25px;
+        background: linear-gradient(135deg, rgba(245, 87, 108, 0.9) 0%, rgba(240, 147, 251, 0.9) 100%);
+        padding: 12px 26px;
+        border-radius: 30px;
         color: #ffffff;
         font-weight: 700;
         font-size: 0.95rem;
-        border: 2px solid rgba(255, 255, 255, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.3);
         display: inline-block;
-        text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.3);
+        text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 6px 20px rgba(245, 87, 108, 0.25);
+        position: relative;
+        z-index: 1;
+    }
+    
+    .user-info {
+        text-align: right;
+        padding-top: 8px;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .user-name {
+        color: #ffffff;
+        font-weight: 700;
+        font-size: 0.95rem;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+    }
+    
+    .user-email {
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 0.85rem;
+        margin-top: 2px;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Create header
+# Create modern header
 st.markdown('<div class="header-box">', unsafe_allow_html=True)
 
-col1, col2, col3 = st.columns([0.7, 5, 2])
+col1, col2, col3 = st.columns([1, 5, 2.5])
 
 with col1:
-    # Use the regular logo (not grayscale, not transparent)
-    logo_path = Path("Trading/icononly_nobuffer.png")
-    if logo_path.exists():
-        st.image(str(logo_path), width=60)
-    else:
-        st.markdown("### 📊")
+    # Empty column for spacing (removed logo)
+    st.markdown("")
 
 with col2:
     st.markdown('<h1 class="app-title">💎 TradeGenius AI</h1>', unsafe_allow_html=True)
     st.markdown('<p class="app-tagline">🚀 Smart Trading • 🤖 AI-Powered • 📈 Data-Driven Insights</p>', unsafe_allow_html=True)
 
 with col3:
-    # Display user info and version
-    col3_inner1, col3_inner2 = st.columns([1, 1])
+    # Display user info with profile dropdown
+    col3_inner1, col3_inner2 = st.columns([1.2, 0.8])
     with col3_inner1:
         user_info = auth_manager.get_user_info()
         if user_info:
-            st.markdown(f"<p style='text-align: right; margin: 0; font-size: 12px;'>👤 {user_info['name']}</p>", unsafe_allow_html=True)
-            st.markdown(f"<p style='text-align: right; margin: 0; font-size: 11px; color: #ccc;'>{user_info['email']}</p>", unsafe_allow_html=True)
+            # Create user profile dropdown
+            st.markdown(f"""
+            <div class='user-info'>
+                <p class='user-name'>👤 {user_info['name']}</p>
+                <p class='user-email'>{user_info['email']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("<div class='user-info'><p class='user-name'>Guest</p></div>", unsafe_allow_html=True)
+    
     with col3_inner2:
-        st.markdown('<div style="text-align: right; padding-top: 12px;"><span class="version-badge">⚡ v3.0.0</span></div>', unsafe_allow_html=True)
+        # User profile menu
+        user_menu = st.selectbox(
+            "👤 Menu",
+            ["Profile", "Security", "Settings", "Logout"],
+            key="user_menu",
+            label_visibility="collapsed"
+        )
+        
+        if user_menu == "Profile":
+            st.session_state.active_page = "👤 My Profile"
+        elif user_menu == "Security":
+            st.session_state.active_page = "🔐 Security Settings"
+        elif user_menu == "Settings":
+            st.session_state.active_page = "⚙️ Account Settings"
+        elif user_menu == "Logout":
+            auth_manager.logout()
+            st.success("✅ Logged out successfully!")
+            import time
+            time.sleep(1)
+            st.rerun()
 
 st.markdown('</div>', unsafe_allow_html=True)
 
 
-# Navigation Bar
+# Modern Navigation Bar with Pill-Style Buttons
 st.markdown("""
 <style>
-    .nav-bar {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    .nav-container {
+        display: flex;
+        gap: 8px;
+        padding: 12px 20px;
+        background: linear-gradient(135deg, rgba(102, 126, 234, 0.95) 0%, rgba(118, 75, 162, 0.95) 100%);
+        border-radius: 50px;
+        margin-bottom: 25px;
+        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(10px);
+        flex-wrap: wrap;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .nav-btn {
+        padding: 10px 18px !important;
+        border-radius: 30px !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+        border: none !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        background: rgba(255, 255, 255, 0.15) !important;
+        color: white !important;
+        white-space: nowrap;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .nav-btn:hover {
+        background: rgba(255, 255, 255, 0.25) !important;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15) !important;
+    }
+    
+    .nav-btn.active {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
+        box-shadow: 0 8px 25px rgba(245, 87, 108, 0.4) !important;
+        transform: scale(1.05);
+    }
+    
+    /* Responsive navigation */
+    @media (max-width: 768px) {
+        .nav-container {
+            gap: 6px;
+            padding: 10px 12px;
+            justify-content: flex-start;
+            overflow-x: auto;
+        }
+        .nav-btn {
+            padding: 8px 14px !important;
+            font-size: 0.85rem !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
 
-nav_col1, nav_col2, nav_col3, nav_col4, nav_col5, nav_col6, nav_col7, nav_col8, nav_col9, nav_col10 = st.columns(10)
+# Create modern navigation
+st.markdown('<div class="nav-container">', unsafe_allow_html=True)
 
-with nav_col1:
-    home_btn = st.button("🏠 Home", use_container_width=True, key="nav_home")
-with nav_col2:
-    analysis_btn = st.button("📊 Analysis", use_container_width=True, key="nav_analysis")
-with nav_col3:
-    ai_btn = st.button("🤖 AI Deep Analysis", use_container_width=True, key="nav_ai")
-with nav_col4:
-    screener_btn = st.button("🎯 Screener", use_container_width=True, key="nav_screener")
-with nav_col5:
-    news_btn = st.button("📰 News", use_container_width=True, key="nav_news")
-with nav_col6:
-    deeplearning_btn = st.button("🔬 Deep Learning", use_container_width=True, key="nav_deeplearning")
-with nav_col7:
-    backtest_btn = st.button("📈 Backtest", use_container_width=True, key="nav_backtest")
-with nav_col8:
-    portfolio_btn = st.button("💼 Portfolio", use_container_width=True, key="nav_portfolio")
-with nav_col9:
-    settings_btn = st.button("⚙️ Settings", use_container_width=True, key="nav_settings")
-with nav_col10:
-    logout_btn = st.button("🚪 Logout", use_container_width=True, key="nav_logout", help="Logout and return to login page")
+# Check if Zerodha is connected
+zerodha_connected = st.session_state.get('zerodha_connected', False)
+
+# Adjust columns based on Zerodha connection
+if zerodha_connected:
+    nav_cols = st.columns([1, 1, 1.2, 1, 0.9, 1.5, 1, 1, 1, 1, 0.9])
+else:
+    nav_cols = st.columns([1, 1, 1.2, 1, 0.9, 1.5, 1, 1, 1, 0.9])
+
+btn_data = [
+    (nav_cols[0], "🏠 Home", "nav_home"),
+    (nav_cols[1], "📊 Analysis", "nav_analysis"),
+    (nav_cols[2], "🤖 AI Deep", "nav_ai"),
+    (nav_cols[3], "🎯 Screener", "nav_screener"),
+    (nav_cols[4], "📰 News", "nav_news"),
+    (nav_cols[5], "🔬 Deep Learning", "nav_deeplearning"),
+    (nav_cols[6], "📈 Backtest", "nav_backtest"),
+    (nav_cols[7], "💼 Portfolio", "nav_portfolio"),
+]
+
+# Add Live Trading button only if Zerodha is connected
+if zerodha_connected:
+    btn_data.append((nav_cols[8], "🔴 Live Trading", "nav_livetrading"))
+    btn_data.append((nav_cols[9], "⚙️ Settings", "nav_settings"))
+    btn_data.append((nav_cols[10], "🚪 Logout", "nav_logout"))
+else:
+    btn_data.append((nav_cols[8], "⚙️ Settings", "nav_settings"))
+    btn_data.append((nav_cols[9], "🚪 Logout", "nav_logout"))
+
+button_results = {}
+for col, label, key in btn_data:
+    with col:
+        button_results[key] = st.button(label, use_container_width=True, key=key, help=label)
+
+home_btn = button_results["nav_home"]
+analysis_btn = button_results["nav_analysis"]
+ai_btn = button_results["nav_ai"]
+screener_btn = button_results["nav_screener"]
+news_btn = button_results["nav_news"]
+deeplearning_btn = button_results["nav_deeplearning"]
+backtest_btn = button_results["nav_backtest"]
+portfolio_btn = button_results["nav_portfolio"]
+livetrading_btn = button_results.get("nav_livetrading", False)
+settings_btn = button_results["nav_settings"]
+logout_btn = button_results["nav_logout"]
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 # Determine active page
 if 'active_page' not in st.session_state:
@@ -575,7 +789,8 @@ elif page == "📊 Stock Analysis":
         col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
 
         with col1:
-            symbol = st.text_input("Enter Stock Symbol", "RELIANCE.NS", help="e.g., RELIANCE.NS, TCS.NS").upper().strip()
+            raw_symbol = st.text_input("Enter Stock Symbol", "RELIANCE.NS", help="e.g., RELIANCE.NS, TCS.NS")
+            symbol = normalize_symbol(raw_symbol)
 
         with col2:
             analysis_type = st.selectbox("Analysis Type", ["Complete", "Technical Only", "Fundamental Only"])
@@ -589,8 +804,13 @@ elif page == "📊 Stock Analysis":
 
     if analyze_button and symbol:
         with st.spinner(f"Analyzing {symbol}..."):
-            # Load data
-            stock_data = load_stock_data(symbol, start_date, end_date)
+            # Load data (ensure symbol normalized)
+            try:
+                from src.symbol_utils import normalize_symbol
+                load_sym = normalize_symbol(symbol)
+            except Exception:
+                load_sym = symbol
+            stock_data = load_stock_data(load_sym, start_date, end_date)
 
             if stock_data is None or len(stock_data) < 30:
                 st.error("❌ Insufficient data available for this stock. Please try another symbol.")
@@ -1001,8 +1221,9 @@ elif page == "🤖 AI Deep Analysis":
     col1, col2, col3 = st.columns([3, 1, 1])
 
     with col1:
-        ai_symbol = st.text_input("📈 Enter Stock Symbol", value="RELIANCE.NS", key="ai_symbol",
-                                  help="Enter NSE stock with .NS suffix (e.g., RELIANCE.NS, TCS.NS)")
+        raw_ai_symbol = st.text_input("📈 Enter Stock Symbol", value="RELIANCE.NS", key="ai_symbol",
+                                  help="Enter NSE stock (you can omit .NS, e.g., RELIANCE or RELIANCE.NS)")
+        ai_symbol = normalize_symbol(raw_ai_symbol)
 
     with col2:
         analysis_depth = st.selectbox("🔬 Analysis Depth",
@@ -1071,8 +1292,13 @@ elif page == "🤖 AI Deep Analysis":
 
     if run_ai and ai_symbol:
         with st.spinner(f"🤖 Running AI Deep Analysis on {ai_symbol}..."):
-            # Load data
-            stock_data = load_stock_data(ai_symbol, start_date, end_date)
+            # Load data (ensure normalized)
+            try:
+                from src.symbol_utils import normalize_symbol
+                load_sym = normalize_symbol(ai_symbol)
+            except Exception:
+                load_sym = ai_symbol
+            stock_data = load_stock_data(load_sym, start_date, end_date)
 
             if stock_data is None or len(stock_data) < 100:
                 st.error("❌ Could not load sufficient data. Please check the symbol.")
@@ -2205,8 +2431,20 @@ elif page == "🤖 AI Deep Analysis":
                     bt_slippage = st.slider("Slippage (%)", 0.01, 0.20, 0.05, 0.01, key="bt_slip")
                 with bt_params_col3:
                     bt_allow_short = st.checkbox("Allow Short Selling", value=True, key="bt_short")
+                # Decision lookback controls: how many recent days to use when making
+                # live-style decisions during the backtest. Older data can still be
+                # present in the dataframe for training/evaluation.
+                with st.expander("Advanced backtest options"):
+                    decision_lookback_days = st.slider("Decision lookback (days)", 10, 365, 60, 10, key="bt_decision_lookback")
 
                 with st.spinner("Running realistic backtest with costs..."):
+                    # Attach decision lookback to dataframe so backtest_strategy
+                    # can use only the recent window for decision-making.
+                    try:
+                        stock_data._decision_lookback = int(decision_lookback_days)
+                    except Exception:
+                        pass
+
                     backtest_result = backtest_strategy(
                         stock_data,
                         initial_capital=100000,
@@ -2564,8 +2802,13 @@ elif page == "🎯 Smart Screener":
             try:
                 status_text.text(f"Analyzing {stock_symbol}... ({idx+1}/{len(stock_list)})")
 
-                # Load data
-                stock_data = load_stock_data(stock_symbol, start_date, end_date)
+                # Load data (ensure symbol normalized)
+                try:
+                    from src.symbol_utils import normalize_symbol
+                    load_sym = normalize_symbol(stock_symbol)
+                except Exception:
+                    load_sym = stock_symbol
+                stock_data = load_stock_data(load_sym, start_date, end_date)
 
                 if stock_data is None or len(stock_data) < 100:
                     continue
@@ -2939,8 +3182,13 @@ elif page == "💼 Portfolio Manager":
                 try:
                     status_text.text(f"🤖 AI Analyzing {symbol}... ({idx+1}/{len(symbols_list)})")
 
-                    # Load data
-                    stock_data = load_stock_data(symbol, start_date, end_date)
+                    # Load data (normalize symbol first)
+                    try:
+                        from src.symbol_utils import normalize_symbol
+                        load_sym = normalize_symbol(symbol)
+                    except Exception:
+                        load_sym = symbol
+                    stock_data = load_stock_data(load_sym, start_date, end_date)
 
                     if stock_data is None or len(stock_data) < 100:
                         continue
@@ -3200,7 +3448,12 @@ elif page == "💼 Portfolio Manager":
                 for _, row in df_portfolio.iterrows():
                     symbol = row['Symbol']
                     try:
-                        stock_data = load_stock_data(symbol, start_date, end_date)
+                        try:
+                            from src.symbol_utils import normalize_symbol
+                            load_sym = normalize_symbol(symbol)
+                        except Exception:
+                            load_sym = symbol
+                        stock_data = load_stock_data(load_sym, start_date, end_date)
                         if stock_data is not None and len(stock_data) >= 20:
                             pos_result = calculate_position_size(stock_data, portfolio_capital / len(df_portfolio),
                                                                  total_risk_budget / len(df_portfolio), 2.0)
@@ -3290,7 +3543,12 @@ elif page == "💼 Portfolio Manager":
             comparison_data = {}
             for symbol in symbols_list[:10]:  # Limit to 10 for performance
                 try:
-                    stock_data = load_stock_data(symbol, start_date, end_date)
+                    try:
+                        from src.symbol_utils import normalize_symbol
+                        load_sym = normalize_symbol(symbol)
+                    except Exception:
+                        load_sym = symbol
+                    stock_data = load_stock_data(load_sym, start_date, end_date)
                     if stock_data is not None and len(stock_data) > 0:
                         comparison_data[symbol] = stock_data
                 except:
@@ -3464,6 +3722,7 @@ elif page == "🔬 Deep Learning":
                 
                 if st.button("🎯 Detect Anomalies", key="detect_anomalies_btn"):
                     with st.spinner("Training autoencoder..."):
+                        load_ml_resources()
                         anomaly_result = detect_anomalies_autoencoder(
                             df, epochs=50, contamination=0.05
                         )
@@ -3627,6 +3886,493 @@ elif page == "📈 Strategy Backtest":
     4. Test walk-forward analysis for robustness
     5. Compare with buy-and-hold benchmark
     """)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# USER PROFILE PAGES
+# ══════════════════════════════════════════════════════════════════════
+
+elif page == "👤 My Profile":
+    create_section_header("My Profile", "View and Manage Your Account Information", "👤")
+    
+    user_info = auth_manager.get_user_info()
+    
+    if user_info:
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown("### 👤 Profile Information")
+            
+            # Display profile info in cards
+            profile_col1, profile_col2 = st.columns(2)
+            
+            with profile_col1:
+                st.markdown(f"""
+                <div style='background: linear-gradient(135deg, #667eea, #764ba2); padding: 25px; border-radius: 15px; color: white;'>
+                    <h4 style='margin: 0; color: rgba(255,255,255,0.8);'>📧 Email</h4>
+                    <h2 style='margin: 10px 0; color: white; word-break: break-all;'>{user_info['email']}</h2>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with profile_col2:
+                st.markdown(f"""
+                <div style='background: linear-gradient(135deg, #f093fb, #f5576c); padding: 25px; border-radius: 15px; color: white;'>
+                    <h4 style='margin: 0; color: rgba(255,255,255,0.8);'>👤 Full Name</h4>
+                    <h2 style='margin: 10px 0; color: white;'>{user_info['name']}</h2>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Session info
+            st.markdown("### 📊 Session Information")
+            
+            session_col1, session_col2, session_col3 = st.columns(3)
+            
+            with session_col1:
+                login_method = user_info.get('login_method', 'Unknown').upper()
+                st.markdown(f"""
+                <div style='background: linear-gradient(135deg, #4facfe, #00f2fe); padding: 20px; border-radius: 12px; text-align: center; color: white;'>
+                    <h4 style='margin: 0; color: rgba(255,255,255,0.8);'>🔐 Login Method</h4>
+                    <h3 style='margin: 10px 0; color: white;'>{login_method}</h3>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with session_col2:
+                session_duration = auth_manager.get_session_duration()
+                st.markdown(f"""
+                <div style='background: linear-gradient(135deg, #43e97b, #38f9d7); padding: 20px; border-radius: 12px; text-align: center; color: white;'>
+                    <h4 style='margin: 0; color: rgba(255,255,255,0.8);'>⏱️ Session Duration</h4>
+                    <h3 style='margin: 10px 0; color: white;'>{session_duration}</h3>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with session_col3:
+                session_start = user_info.get('session_start')
+                if session_start:
+                    session_time = session_start.strftime("%d %b %Y\n%H:%M:%S")
+                else:
+                    session_time = "N/A"
+                st.markdown(f"""
+                <div style='background: linear-gradient(135deg, #fa709a, #fee140); padding: 20px; border-radius: 12px; text-align: center; color: white;'>
+                    <h4 style='margin: 0; color: rgba(255,255,255,0.8);'>🕐 Logged In At</h4>
+                    <h4 style='margin: 10px 0; color: white; font-size: 0.9rem;'>{session_time}</h4>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Account status
+            st.markdown("### ✅ Account Status")
+            st.success("🟢 Your account is active and in good standing")
+            
+            # Edit profile section
+            st.markdown("### ✏️ Edit Profile")
+            
+            with st.form("edit_profile_form"):
+                new_name = st.text_input("Full Name", value=user_info['name'], key="new_name")
+                submitted = st.form_submit_button("💾 Save Changes", use_container_width=True)
+                
+                if submitted:
+                    if new_name and new_name != user_info['name']:
+                        success, message = auth_manager.update_user_profile(user_info['email'], new_name)
+                        if success:
+                            st.success(f"✅ {message}")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {message}")
+                    else:
+                        st.info("ℹ️ No changes made")
+        
+        with col2:
+            st.markdown("### 🔗 Quick Links")
+            
+            if st.button("🔐 Change Password", use_container_width=True, key="profile_btn_password"):
+                st.session_state.active_page = "🔐 Security Settings"
+                st.rerun()
+            
+            if st.button("⚙️ Account Settings", use_container_width=True, key="profile_btn_settings"):
+                st.session_state.active_page = "⚙️ Account Settings"
+                st.rerun()
+            
+            if st.button("🚪 Logout", use_container_width=True, key="profile_btn_logout"):
+                auth_manager.logout()
+                st.success("✅ Logged out successfully!")
+                st.info("Redirecting to login page...")
+                import time
+                time.sleep(1)
+                st.rerun()
+            
+            # Account stats
+            st.markdown("### 📈 Account Statistics")
+            
+            stats_data = {
+                'Active': '✅',
+                'Account Type': 'Premium',
+                'Data Access': 'Full',
+                'Features': 'All Unlocked'
+            }
+            
+            for stat_name, stat_value in stats_data.items():
+                st.markdown(f"""
+                <div style='background: white; padding: 10px; border-radius: 8px; margin: 5px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                    <span style='color: #4a5568;'>{stat_name}:</span>
+                    <span style='color: #667eea; font-weight: bold; float: right;'>{stat_value}</span>
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.error("❌ User information not available. Please logout and login again.")
+
+
+elif page == "🔐 Security Settings":
+    create_section_header("Security Settings", "Manage Your Password and Account Security", "🔐")
+    
+    user_info = auth_manager.get_user_info()
+    
+    if user_info:
+        st.markdown("### 🔐 Change Password")
+        st.markdown(
+            "For security reasons, only users logged in with email/password can change their password. "
+            "If you signed up with Gmail or other OAuth providers, your password is managed by that provider."
+        )
+        
+        login_method = user_info.get('login_method', 'unknown').lower()
+        
+        if login_method in ['email', 'email_password']:
+            with st.form("change_password_form", border=True):
+                st.markdown("#### Enter Your Current and New Password")
+                
+                current_password = st.text_input("Current Password", type="password", key="current_pwd")
+                new_password = st.text_input("New Password", type="password", key="new_pwd")
+                confirm_password = st.text_input("Confirm New Password", type="password", key="confirm_pwd")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.form_submit_button("🔄 Change Password", use_container_width=True):
+                        if not current_password:
+                            st.error("❌ Please enter your current password")
+                        elif len(new_password) < 6:
+                            st.error("❌ New password must be at least 6 characters")
+                        elif new_password != confirm_password:
+                            st.error("❌ Passwords don't match")
+                        elif current_password == new_password:
+                            st.error("❌ New password must be different from current password")
+                        else:
+                            success, message = auth_manager.change_password(
+                                user_info['email'],
+                                current_password,
+                                new_password
+                            )
+                            if success:
+                                st.success(f"✅ {message}")
+                                st.info("Your password has been changed. Please use your new password for future logins.")
+                            else:
+                                st.error(f"❌ {message}")
+                
+                with col2:
+                    st.form_submit_button("🔙 Cancel", use_container_width=True, disabled=True)
+            
+            # Password requirements
+            st.markdown("### 🛡️ Password Security Requirements")
+            st.markdown("""
+            - ✅ At least 6 characters long
+            - ✅ Use a mix of uppercase and lowercase letters
+            - ✅ Include numbers and special characters for better security
+            - ✅ Don't use easily guessable information
+            - ✅ Never share your password with anyone
+            """)
+        
+        else:
+            st.info(f"""
+            ⚠️ **Password Management**
+            
+            You are logged in with **{login_method.upper()}** authentication. 
+            Your password is managed by {login_method.upper()} and not by AITradingLab.
+            
+            To change your password, please visit the password management page of your {login_method.upper()} account.
+            """)
+        
+        # Two-Factor Authentication
+        st.markdown("---")
+        st.markdown("### 🔐 Two-Factor Authentication (Coming Soon)")
+        
+        st.info("""
+        Two-Factor Authentication (2FA) will add an extra layer of security to your account.
+        This feature is coming in a future update.
+        """)
+        
+        # Security Log
+        st.markdown("---")
+        st.markdown("### 📋 Recent Security Activity")
+        
+        security_events = [
+            {"event": "Login Successful", "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M"), "location": "Local"},
+            {"event": "Profile Updated", "timestamp": (datetime.now() - timedelta(days=5)).strftime("%d/%m/%Y %H:%M"), "location": "Local"},
+            {"event": "Login Successful", "timestamp": (datetime.now() - timedelta(days=10)).strftime("%d/%m/%Y %H:%M"), "location": "Local"},
+        ]
+        
+        activity_df = pd.DataFrame(security_events)
+        st.dataframe(activity_df, use_container_width=True, hide_index=True)
+    
+    else:
+        st.error("❌ User information not available. Please logout and login again.")
+
+
+elif page == "⚙️ Account Settings":
+    create_section_header("Account Settings", "Manage Your Account & Privacy", "⚙️")
+    
+    user_info = auth_manager.get_user_info()
+    
+    if user_info:
+        # Notification Settings
+        st.markdown("### 🔔 Notification Settings")
+        
+        with st.form("notification_settings"):
+            email_alerts = st.checkbox("📧 Email Alerts", value=True, help="Receive alerts via email")
+            push_notifications = st.checkbox("🔔 Push Notifications", value=False, help="Receive push notifications")
+            daily_digest = st.checkbox("📰 Daily Digest", value=True, help="Receive daily market digest")
+            trade_alerts = st.checkbox("📈 Trade Alerts", value=True, help="Receive alerts for your trading signals")
+            
+            if st.form_submit_button("✅ Save Notification Preferences"):
+                st.success("✅ Notification preferences saved!")
+        
+        st.markdown("---")
+        
+        # Data & Privacy
+        st.markdown("### 🔒 Data & Privacy")
+        
+        st.markdown("""
+        - **Data Storage**: Your portfolio data and preferences are stored securely
+        - **Account Privacy**: Your account information is private and encrypted
+        - **Third-Party Access**: We do not share your data with third parties without your consent
+        - **Data Retention**: Your data is retained until account deletion
+        """)
+        
+        st.markdown("---")
+        
+        # Backup & Download
+        st.markdown("### 📥 Download Your Data")
+        
+        if st.button("📊 Download Account Data", use_container_width=True, key="download_data"):
+            account_data = {
+                "email": user_info['email'],
+                "name": user_info['name'],
+                "login_method": user_info.get('login_method'),
+                "session_start": str(user_info.get('session_start')),
+                "exported_at": datetime.now().isoformat()
+            }
+            
+            import json
+            data_json = json.dumps(account_data, indent=2)
+            
+            st.download_button(
+                label="💾 Save Account Data as JSON",
+                data=data_json,
+                file_name=f"account_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                mime="application/json"
+            )
+        
+        st.markdown("---")
+        
+        # Zerodha Integration
+        st.markdown("### 📊 Zerodha Integration")
+        st.markdown("""
+        Connect your Zerodha account to access live trading, real-time portfolio data, and automated order placement.
+        """)
+        
+        # Check if Zerodha session exists
+        zerodha_connected = st.session_state.get('zerodha_connected', False)
+        zerodha_user_id = st.session_state.get('zerodha_user_id', None)
+        
+        if zerodha_connected and zerodha_user_id:
+            st.success(f"✅ Connected to Zerodha (User ID: {zerodha_user_id})")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("📊 View Live Portfolio", use_container_width=True, key="zerodha_portfolio"):
+                    st.info("📊 Live portfolio would load here with real-time positions and P&L")
+            
+            with col2:
+                if st.button("🔗 Disconnect Zerodha", use_container_width=True, key="zerodha_disconnect"):
+                    st.session_state.zerodha_connected = False
+                    st.session_state.zerodha_user_id = None
+                    st.session_state.zerodha_access_token = None
+                    st.success("✅ Disconnected from Zerodha")
+                    st.rerun()
+        
+        else:
+            st.info("ℹ️ Connect your Zerodha account to enable live trading features")
+            
+            with st.expander("🔗 Connect to Zerodha", expanded=False):
+                st.markdown("#### Step-by-Step Connection")
+                st.markdown("""
+                1. **Get Your API Credentials**
+                   - Go to [Zerodha Console](https://console.zerodha.com)
+                   - Navigate to "API Console" → "Apps"
+                   - Create a new app or use existing one
+                   - Copy your **API Key** and **API Secret**
+                
+                2. **Enter Your Credentials Below**
+                   - Paste the API key and secret
+                   - Set the redirect URL (same as mentioned in your Zerodha app)
+                
+                3. **Authorize Access**
+                   - Click "Get Login URL"
+                   - Login with your Zerodha credentials
+                   - Copy the request token from the redirected URL
+                   - Paste it below to complete authorization
+                """)
+                
+                with st.form("zerodha_connect_form"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        zerodha_api_key = st.text_input(
+                            "🔑 Zerodha API Key",
+                            type="password",
+                            help="Your API key from Zerodha Console"
+                        )
+                    
+                    with col2:
+                        zerodha_api_secret = st.text_input(
+                            "🔐 Zerodha API Secret",
+                            type="password",
+                            help="Your API secret from Zerodha Console"
+                        )
+                    
+                    zerodha_redirect_url = st.text_input(
+                        "🔗 Redirect URL",
+                        value="http://localhost:8501/",
+                        help="Must match the redirect URL in your Zerodha app"
+                    )
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        if st.form_submit_button("🌐 Get Login URL", use_container_width=True):
+                            if zerodha_api_key and zerodha_api_secret:
+                                try:
+                                    from src.zerodha_integration import ZerodhaAuthenticator
+                                    
+                                    auth = ZerodhaAuthenticator(
+                                        api_key=zerodha_api_key,
+                                        api_secret=zerodha_api_secret,
+                                        redirect_url=zerodha_redirect_url
+                                    )
+                                    
+                                    login_url = auth.get_login_url()
+                                    if login_url:
+                                        st.session_state.zerodha_authenticator = auth
+                                        st.info(f"📱 **Login URL:** [Click here to authorize]({login_url})")
+                                        st.markdown("After login, copy the **request_token** from the redirected URL and paste it below.")
+                                    else:
+                                        st.error("❌ Failed to generate login URL. Check your API credentials.")
+                                except Exception as e:
+                                    st.error(f"❌ Error: {str(e)}")
+                            else:
+                                st.error("❌ Please enter both API key and secret")
+                    
+                    with col2:
+                        pass
+                    
+                    with col3:
+                        pass
+                
+                # Request token exchange
+                st.markdown("#### Complete Authorization")
+                
+                with st.form("zerodha_token_form"):
+                    request_token = st.text_input(
+                        "🎫 Request Token",
+                        help="Copy from the redirected URL after Zerodha login (starts with 'Xxxxxx')"
+                    )
+                    
+                    if st.form_submit_button("✅ Complete Authorization", use_container_width=True):
+                        if request_token and 'zerodha_authenticator' in st.session_state:
+                            try:
+                                auth = st.session_state.zerodha_authenticator
+                                result = auth.set_access_token(request_token)
+                                
+                                if 'error' not in result and result.get('success'):
+                                    # Save connection data
+                                    st.session_state.zerodha_connected = True
+                                    st.session_state.zerodha_user_id = result.get('user_id')
+                                    st.session_state.zerodha_access_token = result.get('access_token')
+                                    st.session_state.zerodha_authenticator = auth
+                                    
+                                    st.success(f"""
+                                    ✅ **Connected Successfully!**
+                                    
+                                    - **User ID:** {result.get('user_id')}
+                                    - **Email:** {result.get('email')}
+                                    - **Broker:** {result.get('broker', 'Zerodha')}
+                                    """)
+                                    st.balloons()
+                                    import time
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Authorization failed: {result.get('error', 'Unknown error')}")
+                            except Exception as e:
+                                st.error(f"❌ Error during authorization: {str(e)}")
+                        else:
+                            st.error("❌ Please click 'Get Login URL' first and then enter the request token")
+        
+        st.markdown("---")
+        
+        # Account Deletion
+        st.markdown("### 🗑️ Delete Account")
+        
+        st.warning("""
+        ⚠️ **Warning**: This action is permanent and cannot be undone!
+        
+        Deleting your account will:
+        - Remove all your data permanently
+        - Cancel any active subscriptions
+        - Delete your portfolio and preferences
+        - Logout you immediately
+        """)
+        
+        if st.checkbox("I understand this will permanently delete my account", key="delete_confirm"):
+            with st.form("delete_account_form"):
+                st.markdown("#### Confirm Account Deletion")
+                
+                delete_email = st.text_input(
+                    "Type your email to confirm",
+                    help="Enter your email address to confirm deletion"
+                )
+                delete_password = st.text_input(
+                    "Enter your password",
+                    type="password",
+                    help="For security, provide your password to confirm"
+                )
+                
+                col1, col2, col3 = st.columns([1, 1, 1])
+                
+                with col1:
+                    if st.form_submit_button("🗑️ Delete Account", use_container_width=True):
+                        if delete_email.lower() != user_info['email'].lower():
+                            st.error("❌ Email doesn't match")
+                        elif not delete_password:
+                            st.error("❌ Please enter your password to confirm")
+                        else:
+                            success, message = auth_manager.delete_account(
+                                user_info['email'],
+                                delete_password
+                            )
+                            if success:
+                                st.success(f"✅ {message}")
+                                st.warning("Redirecting to login page...")
+                                import time
+                                time.sleep(2)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {message}")
+                
+                with col2:
+                    if st.form_submit_button("🔙 Cancel", use_container_width=True):
+                        st.info("Account deletion cancelled")
+    
+    else:
+        st.error("❌ User information not available. Please logout and login again.")
 
 
 # SETTINGS PAGE

@@ -32,6 +32,12 @@ def load_stock_data(symbol: str, start_date=None, end_date=None, period: str = "
         DataFrame with OHLCV data
     """
     try:
+        # Normalize symbol input (append .NS for NSE by default if user omitted)
+        try:
+            from src.symbol_utils import normalize_symbol
+            symbol = normalize_symbol(symbol)
+        except Exception:
+            pass
         ticker = yf.Ticker(symbol)
 
         if start_date and end_date:
@@ -112,7 +118,12 @@ def get_multiple_stocks(symbols: list, start_date=None, end_date=None, period: s
     """
     data = {}
     for symbol in symbols:
-        df = load_stock_data(symbol, start_date, end_date, period)
+        try:
+            from src.symbol_utils import normalize_symbol
+            s = normalize_symbol(symbol)
+        except Exception:
+            s = symbol
+        df = load_stock_data(s, start_date, end_date, period)
         if df is not None and not df.empty:
             data[symbol] = df
     return data

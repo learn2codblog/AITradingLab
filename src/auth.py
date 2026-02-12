@@ -148,25 +148,30 @@ class AuthManager:
     
     def register_email_user(self, email: str, password: str, name: str) -> Tuple[bool, str]:
         """Register a new email user"""
-        # Validate input
+        # Normalize and validate input
+        if email:
+            email = email.strip().lower()
+        if name:
+            name = name.strip()
+
         if not email or not password or not name:
             return False, "All fields are required"
-        
+
         if len(password) < 6:
             return False, "Password must be at least 6 characters"
-        
+
         # Check if email already exists
         users = self._load_users_db()
-        if email.lower() in users:
+        if email in users:
             return False, f"Email {email} already registered"
-        
+
         # Create new user
-        users[email.lower()] = {
+        users[email] = {
             "password_hash": self._hash_password(password),
             "name": name,
             "created_at": datetime.now().isoformat()
         }
-        
+
         self._save_users_db(users)
         return True, "Registration successful! Please login."
     
@@ -174,25 +179,26 @@ class AuthManager:
         """Login with email and password"""
         if not email or not password:
             return False, "Email and password required"
-        
+
+        email = email.strip().lower()
         users = self._load_users_db()
-        
-        if email.lower() not in users:
+
+        if email not in users:
             return False, "Email not found"
-        
-        user_data = users[email.lower()]
+
+        user_data = users[email]
         password_hash = self._hash_password(password)
-        
+
         if user_data['password_hash'] != password_hash:
             return False, "Incorrect password"
-        
+
         # Set session
         self.set_user_session(
             email=email,
             name=user_data['name'],
             method="email"
         )
-        
+
         return True, "Login successful"
 
     def set_user_session(self, email: str, name: str, picture: str = None, method: str = "gmail"):
@@ -259,6 +265,85 @@ class AuthManager:
             return f"{hours}h {minutes}m"
         return f"{minutes}m"
 
+    def change_password(self, email: str, old_password: str, new_password: str) -> Tuple[bool, str]:
+        """Change password for a user (email authentication only)"""
+        if not email or not old_password or not new_password:
+            return False, "All fields are required"
+
+        email = email.strip().lower()
+        
+        if len(new_password) < 6:
+            return False, "New password must be at least 6 characters"
+        
+        if old_password == new_password:
+            return False, "New password must be different from old password"
+
+        users = self._load_users_db()
+
+        if email not in users:
+            return False, "Email not found"
+
+        user_data = users[email]
+        old_password_hash = self._hash_password(old_password)
+
+        if user_data['password_hash'] != old_password_hash:
+            return False, "Current password is incorrect"
+
+        # Update password
+        users[email]['password_hash'] = self._hash_password(new_password)
+        users[email]['updated_at'] = datetime.now().isoformat()
+        
+        self._save_users_db(users)
+        return True, "Password changed successfully"
+
+    def delete_account(self, email: str, password: str) -> Tuple[bool, str]:
+        """Delete user account (email authentication only)"""
+        if not email or not password:
+            return False, "Email and password are required"
+
+        email = email.strip().lower()
+        users = self._load_users_db()
+
+        if email not in users:
+            return False, "Email not found"
+
+        user_data = users[email]
+        password_hash = self._hash_password(password)
+
+        if user_data['password_hash'] != password_hash:
+            return False, "Password is incorrect"
+
+        # Delete user account
+        del users[email]
+        self._save_users_db(users)
+        
+        # Logout the user
+        self.logout()
+        return True, "Account deleted successfully"
+
+    def update_user_profile(self, email: str, name: str) -> Tuple[bool, str]:
+        """Update user profile information"""
+        if not email or not name:
+            return False, "Email and name are required"
+
+        email = email.strip().lower()
+        name = name.strip()
+
+        users = self._load_users_db()
+
+        if email not in users:
+            return False, "Email not found"
+
+        # Update user info
+        users[email]['name'] = name
+        users[email]['updated_at'] = datetime.now().isoformat()
+        self._save_users_db(users)
+
+        # Update session state
+        st.session_state.user_name = name
+        
+        return True, "Profile updated successfully"
+
 
 def create_login_page() -> bool:
     """
@@ -313,52 +398,55 @@ def create_login_page() -> bool:
         
         st.markdown("<hr>", unsafe_allow_html=True)
         
-        # Demo/Test Login
-        st.markdown("#### Demo Login (for Testing)")
-        st.warning(
-            "⚠️ Demo login is for testing only. "
-            "In production, use Gmail OAuth2."
-        )
-        
-        col_demo1, col_demo2 = st.columns(2)
-        
-        with col_demo1:
-            test_email = st.text_input(
-                "Email",
-                value="user@example.com",
-                placeholder="your.email@gmail.com",
-                key="demo_email"
+        # Demo/Test Login - only show when enabled via environment
+        import os as _os
+        _enable_demo = _os.getenv('ENABLE_DEMO_LOGIN', 'false').lower() == 'true'
+        if _enable_demo:
+            st.markdown("#### Demo Login (for Testing)")
+            st.warning(
+                "⚠️ Demo login is for testing only. "
+                "In production, use Gmail OAuth2."
             )
-        
-        with col_demo2:
-            test_name = st.text_input(
-                "Full Name",
-                value="Demo User",
-                placeholder="Your Name",
-                key="demo_name"
-            )
-        
-        col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
-        
-        with col_btn1:
-            demo_login = st.button(
-                "✅ Demo Login",
-                key="demo_login_btn",
-                use_container_width=True,
-                help="Login with demo credentials"
-            )
-        
-        with col_btn3:
-            pass
-        
-        if demo_login:
-            if test_email and test_name:
-                if auth_manager.create_demo_user(test_email, test_name):
-                    st.success("✅ Demo login successful!")
-                    st.balloons()
-                    return True
-            else:
-                st.error("Please enter both email and name")
+            
+            col_demo1, col_demo2 = st.columns(2)
+            
+            with col_demo1:
+                test_email = st.text_input(
+                    "Email",
+                    value="user@example.com",
+                    placeholder="your.email@gmail.com",
+                    key="demo_email"
+                )
+            
+            with col_demo2:
+                test_name = st.text_input(
+                    "Full Name",
+                    value="Demo User",
+                    placeholder="Your Name",
+                    key="demo_name"
+                )
+            
+            col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
+            
+            with col_btn1:
+                demo_login = st.button(
+                    "✅ Demo Login",
+                    key="demo_login_btn",
+                    use_container_width=True,
+                    help="Login with demo credentials"
+                )
+            
+            with col_btn3:
+                pass
+            
+            if demo_login:
+                if test_email and test_name:
+                    if auth_manager.create_demo_user(test_email, test_name):
+                        st.success("✅ Demo login successful!")
+                        st.balloons()
+                        return True
+                else:
+                    st.error("Please enter both email and name")
         
         # Info section
         st.markdown("<hr>", unsafe_allow_html=True)

@@ -1606,21 +1606,14 @@ def backtest_strategy(df: pd.DataFrame, signal_col: str = None,
     """
     df_bt = df.copy()
 
-    # Generate signals if not provided
+    # If no signal column provided, we will compute signals on-the-fly per-step
+    # using only historical data up to the decision point. This allows using
+    # a recent lookback window for decision-making while retaining older data
+    # for other calculations.
     if signal_col is None or signal_col not in df_bt.columns:
         if 'RSI_14' in df_bt.columns and 'MACD' in df_bt.columns:
-            df_bt['Signal'] = 0
-            buy_cond = (df_bt['RSI_14'] < 35) | (
-                (df_bt['MACD'] > df_bt['MACD_Signal']) &
-                (df_bt['MACD'].shift(1) <= df_bt['MACD_Signal'].shift(1))
-            )
-            sell_cond = (df_bt['RSI_14'] > 65) | (
-                (df_bt['MACD'] < df_bt['MACD_Signal']) &
-                (df_bt['MACD'].shift(1) >= df_bt['MACD_Signal'].shift(1))
-            )
-            df_bt.loc[buy_cond, 'Signal'] = 1
-            df_bt.loc[sell_cond, 'Signal'] = -1
-            signal_col = 'Signal'
+            # signal_col remains None -> compute per-row below
+            signal_col = None
         else:
             return {'error': 'No signal column provided and cannot generate signals (missing RSI/MACD)'}
 
@@ -1664,7 +1657,53 @@ def backtest_strategy(df: pd.DataFrame, signal_col: str = None,
         if pd.isna(current_price) or current_price <= 0:
             continue
 
-        signal = row[signal_col] if not pd.isna(row[signal_col]) else 0
+        # If a precomputed signal column is provided, use it. Otherwise compute
+        # a signal based on recent historical data only (to simulate live decisions).
+        if signal_col is not None:
+            signal = row[signal_col] if not pd.isna(row[signal_col]) else 0
+        else:
+            # Define how many past days to use for decision-making. If the caller
+            # has set an attribute `decision_lookback` on the DataFrame (not ideal)
+            # we would read it; otherwise default to using the last 60 days.
+            decision_lookback = getattr(df_bt, '_decision_lookback', None)
+            if decision_lookback is None:
+                decision_lookback = 60
+
+            window_start = max(0, i - int(decision_lookback))
+            df_window = df_bt.iloc[window_start:i+1]
+
+            # Compute RSI on window
+            try:
+                delta = df_window['Close'].diff()
+                gain = delta.where(delta > 0, 0).rolling(14).mean()
+                loss = -delta.where(delta < 0, 0).rolling(14).mean()
+                rs = gain / loss
+                rsi = 100 - (100 / (1 + rs))
+                rsi_last = rsi.iloc[-1] if not rsi.empty else np.nan
+            except Exception:
+                rsi_last = np.nan
+
+            # Compute MACD on window
+            try:
+                ema_fast = df_window['Close'].ewm(span=12, adjust=False).mean()
+                ema_slow = df_window['Close'].ewm(span=26, adjust=False).mean()
+                macd = ema_fast - ema_slow
+                macd_signal = macd.ewm(span=9, adjust=False).mean()
+                macd_last = macd.iloc[-1]
+                macd_prev = macd.iloc[-2] if len(macd) > 1 else macd_last
+                macd_signal_last = macd_signal.iloc[-1]
+                macd_signal_prev = macd_signal.iloc[-2] if len(macd_signal) > 1 else macd_signal_last
+            except Exception:
+                macd_last = macd_prev = macd_signal_last = macd_signal_prev = 0
+
+            buy = (not np.isnan(rsi_last) and rsi_last < 35) or (
+                (macd_last > macd_signal_last) and (macd_prev <= macd_signal_prev)
+            )
+            sell = (not np.isnan(rsi_last) and rsi_last > 65) or (
+                (macd_last < macd_signal_last) and (macd_prev >= macd_signal_prev)
+            )
+
+            signal = 1 if buy else (-1 if sell else 0)
         vol_mult = slippage_multiplier.iloc[i] if i < len(slippage_multiplier) else 1.0
         if pd.isna(vol_mult):
             vol_mult = 1.0
@@ -3058,18 +3097,16 @@ def build_transformer_model(seq_len: int = 60, forecast_len: int = 5,
             x = Add()([x, ff_output])
             x = LayerNormalization(epsilon=1e-6)(x)
         
-        # Decoder - use last timestep for prediction
-        x = x[:, -1, :]  # Take last timestep
-        
-        # Project to forecast
+        # Decoder - use last timestep representation
+        x_last = x[:, -1, :]  # Take last timestep
+
+        # Project to a hidden representation
+        x = Dense(d_model, activation='relu')(x_last)
         x = Dense(d_model, activation='relu')(x)
-        x = Dense(d_model, activation='relu')(x)
-        
-        # Repeat for forecast length
-        x = RepeatVector(forecast_len)(x)
-        
-        # Dense output projection
-        outputs = TimeDistributed(Dense(n_features))(x)
+
+        # Project directly to forecast_len * n_features and reshape
+        x = Dense(forecast_len * n_features)(x)
+        outputs = Reshape((forecast_len, n_features))(x)
         
         # Create model
         model = Model(inputs=inputs, outputs=outputs)

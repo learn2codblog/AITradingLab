@@ -1,5 +1,6 @@
 # TradeGenius AI - Requirements
 # ================================
+# Version 4.0.0 - Modern UI with User Profiles & Enhanced Analytics
 # CPU-Only Configuration for Better Compatibility
 # Install with: pip install -r requirements.txt
 
@@ -20,7 +21,7 @@ matplotlib>=3.7.0
 scikit-learn>=1.3.0
 xgboost>=1.7.0
 
-# Deep Learning (Keras, Transformers, Autoencoders) - CPU Only
+# Deep Learning (Keras, Transformers, Autoencoders, LSTM, Transformers) - CPU Only
 # Using tensorflow-cpu for CPU-only inference (no GPU dependencies)
 tensorflow-cpu>=2.15.0
 keras>=2.15.0
@@ -49,3 +50,9 @@ pytz>=2023.0
 
 # Hyperparameter Optimization
 optuna>=3.0.0
+
+# NEW in v4.0.0: User Profile Management & Authentication
+# (Built-in with Streamlit session management - no extra deps needed)
+
+# NEW in v4.0.0: Enhanced UI Components
+# (All handled by Streamlit markdown & CSS - no extra deps needed)

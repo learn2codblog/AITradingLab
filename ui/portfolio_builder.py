@@ -34,12 +34,14 @@ def create_portfolio_builder():
     
     with col2:
         if st.button("➕ Add", use_container_width=True):
-            if new_symbol and new_symbol.upper() not in st.session_state.portfolio_items:
-                st.session_state.portfolio_items[new_symbol.upper()] = {
-                    'allocation': 0,
-                    'quantity': 0,
-                    'price': 0
-                }
+                from src.symbol_utils import normalize_symbol
+                normalized = normalize_symbol(new_symbol)
+                if normalized and normalized not in st.session_state.portfolio_items:
+                    st.session_state.portfolio_items[normalized] = {
+                        'allocation': 0,
+                        'quantity': 0,
+                        'price': 0
+                    }
                 st.success(f"✅ Added {new_symbol.upper()}")
                 st.rerun()
     
@@ -205,13 +207,16 @@ def create_advanced_portfolio_builder():
     with col3:
         if st.button("✅ Add Position"):
             if symbol:
-                st.session_state.advanced_portfolio[symbol.upper()] = {
+                from src.symbol_utils import normalize_symbol
+                normalized = normalize_symbol(symbol)
+                key_symbol = normalized if normalized else symbol.upper()
+                st.session_state.advanced_portfolio[key_symbol] = {
                     'quantity': quantity,
                     'buy_price': 0,
                     'current_price': 0,
                     'notes': ''
                 }
-                st.success(f"✅ Added {quantity} shares of {symbol.upper()}")
+                st.success(f"✅ Added {quantity} shares of {key_symbol}")
                 st.rerun()
     
     # Manage positions
@@ -305,6 +310,37 @@ def create_advanced_portfolio_builder():
                 f"{total_gain_loss_pct:+.2f}% {color}"
             )
 
+        # Analyze positions button
+        if st.button("🔎 Analyze Positions"):
+            st.info("Analyzing positions using recent market data...")
+            for symbol, position in st.session_state.advanced_portfolio.items():
+                try:
+                    from src.data_loader import load_stock_data
+                    from src.advanced_ai import calculate_advanced_indicators
+                except Exception:
+                    st.error("Analysis modules unavailable")
+                    break
+
+                df = load_stock_data(symbol, period='1y')
+                if df is None or df.empty:
+                    st.warning(f"No market data for {symbol}")
+                    continue
+
+                df_ind = calculate_advanced_indicators(df.copy())
+                current_price = position.get('current_price') or float(df_ind['Close'].iloc[-1])
+                supertrend_dir = int(df_ind['Supertrend_Direction'].iloc[-1]) if 'Supertrend_Direction' in df_ind.columns else 0
+                adx = float(df_ind['ADX'].iloc[-1]) if 'ADX' in df_ind.columns else None
+
+                # Simple rule-based recommendation
+                if supertrend_dir == -1 and (adx is None or adx >= 20):
+                    rec = 'Recommend SELL (trend turned bearish)'
+                elif supertrend_dir == 1 and (adx is None or adx >= 20):
+                    rec = 'Recommend HOLD (trend bullish)'
+                else:
+                    rec = 'Neutral — Monitor price action'
+
+                st.write(f"{symbol}: {rec} — Current: ₹{current_price:.2f} | ADX: {adx}")
+
 
 def create_mobile_responsive_portfolio():
     """
@@ -357,45 +393,93 @@ def show_portfolio_recommendations(portfolio_items: dict, analysis_data: dict = 
     if not portfolio_items:
         st.info("Add stocks to get recommendations")
         return
-    
-    recommendations = {
-        'Rebalance': 'Consider rebalancing to maintain target allocation',
-        'Diversify': 'Add stocks from different sectors',
-        'Risk Check': 'Check portfolio risk metrics',
-        'Tax Planning': 'Review tax-loss harvesting opportunities',
-        'Quality Improvement': 'Replace underperforming stocks'
-    }
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        for i, (title, desc) in enumerate(list(recommendations.items())[:3]):
-            with st.container():
-                st.markdown(f"""
-                <div style='
-                    border-left: 4px solid #00D9FF;
-                    padding: 12px;
-                    margin: 8px 0;
-                    background: rgba(0, 217, 255, 0.1);
-                    border-radius: 4px;
-                '>
-                    <b>{title}</b><br>
-                    <small>{desc}</small>
-                </div>
-                """, unsafe_allow_html=True)
-    
-    with col2:
-        for i, (title, desc) in enumerate(list(recommendations.items())[3:]):
-            with st.container():
-                st.markdown(f"""
-                <div style='
-                    border-left: 4px solid #FF6B6B;
-                    padding: 12px;
-                    margin: 8px 0;
-                    background: rgba(255, 107, 107, 0.1);
-                    border-radius: 4px;
-                '>
-                    <b>{title}</b><br>
-                    <small>{desc}</small>
-                </div>
-                """, unsafe_allow_html=True)
+    st.info("Analyzing portfolio — this may take a few seconds per stock.")
+
+    analysis_results = {}
+
+    for symbol in portfolio_items.keys():
+        try:
+            from src.data_loader import load_stock_data
+            from src.advanced_ai import calculate_advanced_indicators, detect_market_regime
+            from src.technical_indicators import get_trend
+        except Exception:
+            st.error("Required analysis modules unavailable")
+            return
+
+        df = load_stock_data(symbol, period='2y')
+        if df is None or df.empty:
+            analysis_results[symbol] = {'error': 'No data'}
+            continue
+
+        # Compute indicators (this will add Supertrend, ATR, ADX, etc.)
+        try:
+            df_ind = calculate_advanced_indicators(df.copy())
+        except Exception:
+            df_ind = df.copy()
+
+        current_price = float(df_ind['Close'].iloc[-1])
+        atr = float(df_ind['ATR_14'].iloc[-1]) if 'ATR_14' in df_ind.columns else None
+        bb_lower = float(df_ind['BB_Lower'].iloc[-1]) if 'BB_Lower' in df_ind.columns else None
+        bb_upper = float(df_ind['BB_Upper'].iloc[-1]) if 'BB_Upper' in df_ind.columns else None
+        supertrend_dir = int(df_ind['Supertrend_Direction'].iloc[-1]) if 'Supertrend_Direction' in df_ind.columns else 0
+        adx = float(df_ind['ADX'].iloc[-1]) if 'ADX' in df_ind.columns else None
+        trend = get_trend(df_ind)
+
+        # Risk and target calculations
+        vol_pct = (atr / current_price * 100) if atr and current_price else None
+        suggested_stop = current_price - (atr * 2) if atr else None
+        suggested_buy = bb_lower * 1.01 if bb_lower else current_price * 0.995
+        suggested_sell = bb_upper * 0.99 if bb_upper else current_price * 1.05
+
+        # Recommendation logic
+        if supertrend_dir == 1 and (adx is None or adx >= 20) and trend.lower().startswith('up'):
+            action = 'Hold / Consider Buying'
+        elif supertrend_dir == -1 and (adx is None or adx >= 20):
+            action = 'Consider Selling'
+        else:
+            action = 'Neutral - Monitor'
+
+        # Compose result
+        analysis_results[symbol] = {
+            'current_price': current_price,
+            'atr': atr,
+            'volatility_pct': vol_pct,
+            'support': bb_lower,
+            'resistance': bb_upper,
+            'supertrend_dir': supertrend_dir,
+            'adx': adx,
+            'trend': trend,
+            'suggested_buy': float(suggested_buy) if suggested_buy is not None else None,
+            'suggested_sell': float(suggested_sell) if suggested_sell is not None else None,
+            'suggested_stop': float(suggested_stop) if suggested_stop is not None else None,
+            'action': action
+        }
+
+    # Display results
+    for symbol, res in analysis_results.items():
+        with st.expander(f"{symbol} — {res.get('action', '')}"):
+            if 'error' in res:
+                st.error(res['error'])
+                continue
+
+            cols = st.columns([2, 1, 1, 1])
+            with cols[0]:
+                st.markdown(f"**Current Price:** ₹{res['current_price']:.2f}")
+                st.markdown(f"**Trend:** {res['trend']}")
+                st.markdown(f"**Action:** {res['action']}")
+            with cols[1]:
+                st.markdown(f"**Support:** {res['support']:.2f}" if res['support'] else "**Support:** N/A")
+                st.markdown(f"**Buy Suggest:** {res['suggested_buy']:.2f}" if res['suggested_buy'] else "**Buy Suggest:** N/A")
+            with cols[2]:
+                st.markdown(f"**Resistance:** {res['resistance']:.2f}" if res['resistance'] else "**Resistance:** N/A")
+                st.markdown(f"**Sell Target:** {res['suggested_sell']:.2f}" if res['suggested_sell'] else "**Sell Target:** N/A")
+            with cols[3]:
+                st.markdown(f"**ATR:** {res['atr']:.2f}" if res['atr'] else "**ATR:** N/A")
+                st.markdown(f"**Vol %:** {res['volatility_pct']:.2f}%" if res['volatility_pct'] else "**Vol %:** N/A")
+
+    # Risk check summary
+    high_risk = [s for s, r in analysis_results.items() if r.get('volatility_pct') and r['volatility_pct'] > 3]
+    if high_risk:
+        st.warning(f"High volatility detected for: {', '.join(high_risk)}")
+    else:
+        st.success("Portfolio risk: Acceptable based on ATR volatility")
