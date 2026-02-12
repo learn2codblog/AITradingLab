@@ -91,11 +91,16 @@ def engineer_advanced_features(df: pd.DataFrame) -> pd.DataFrame:
     df['Lower_High'] = (df['High'] < df['High'].shift(1)).astype(int)
     df['Lower_Low'] = (df['Low'] < df['Low'].shift(1)).astype(int)
 
-    # Trend score
-    df['Trend_Score'] = df['Higher_High'] + df['Higher_Low'] - df['Lower_High'] - df['Lower_Low']
-    df['Trend_Score_5d'] = df['Trend_Score'].rolling(5).sum()
+    # Trend score (price action based: higher highs/lows pattern)
+    # Named differently from advanced_ai.py's SMA-based Trend_Score to avoid conflicts
+    df['PA_Trend_Score'] = df['Higher_High'] + df['Higher_Low'] - df['Lower_High'] - df['Lower_Low']
+    df['PA_Trend_Score_5d'] = df['PA_Trend_Score'].rolling(5).sum()
 
     # ─── TARGET VARIABLE ───
+    # NOTE: Target variables use future data (shift(-1), shift(-5)) and MUST NOT be used as features.
+    # They are created here solely for model training labels.
+    # The dropna() in prepare_ml_data removes the last row(s) where target is NaN,
+    # preventing look-ahead bias during training.
     df['Target'] = (df['Close'].shift(-1) > df['Close']).astype(int)
     df['Target_5d'] = (df['Close'].shift(-5) > df['Close']).astype(int)
 

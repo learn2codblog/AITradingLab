@@ -112,6 +112,29 @@ def calmar_ratio(returns, prices, periods=252):
     return annual_return / mdd
 
 
+def _safe_align(returns, benchmark_returns):
+    """
+    Safely align two return series by index (date-aware) with inner join.
+    Falls back to length-based alignment for non-Series inputs.
+    """
+    if isinstance(returns, pd.Series) and isinstance(benchmark_returns, pd.Series):
+        returns, benchmark_returns = returns.align(benchmark_returns, join='inner')
+        returns = returns.dropna()
+        benchmark_returns = benchmark_returns.dropna()
+        # Re-align after dropna in case indices diverged
+        returns, benchmark_returns = returns.align(benchmark_returns, join='inner')
+    else:
+        # Fallback for arrays
+        if isinstance(returns, pd.Series):
+            returns = returns.dropna().values
+        if isinstance(benchmark_returns, pd.Series):
+            benchmark_returns = benchmark_returns.dropna().values
+        min_len = min(len(returns), len(benchmark_returns))
+        returns = np.array(returns[-min_len:])
+        benchmark_returns = np.array(benchmark_returns[-min_len:])
+    return returns, benchmark_returns
+
+
 def information_ratio(returns, benchmark_returns, periods=252):
     """
     Calculate Information Ratio
@@ -124,15 +147,10 @@ def information_ratio(returns, benchmark_returns, periods=252):
     Returns:
         Information ratio
     """
-    if isinstance(returns, pd.Series):
-        returns = returns.dropna()
-    if isinstance(benchmark_returns, pd.Series):
-        benchmark_returns = benchmark_returns.dropna()
+    returns, benchmark_returns = _safe_align(returns, benchmark_returns)
 
-    # Align lengths
-    min_len = min(len(returns), len(benchmark_returns))
-    returns = returns[-min_len:]
-    benchmark_returns = benchmark_returns[-min_len:]
+    if len(returns) == 0:
+        return 0
 
     excess_returns = returns - benchmark_returns
     tracking_error = np.std(excess_returns)
@@ -154,15 +172,10 @@ def beta(returns, market_returns):
     Returns:
         Beta coefficient
     """
-    if isinstance(returns, pd.Series):
-        returns = returns.dropna()
-    if isinstance(market_returns, pd.Series):
-        market_returns = market_returns.dropna()
+    returns, market_returns = _safe_align(returns, market_returns)
 
-    # Align lengths
-    min_len = min(len(returns), len(market_returns))
-    returns = returns[-min_len:]
-    market_returns = market_returns[-min_len:]
+    if len(returns) < 2:
+        return 1
 
     covariance = np.cov(returns, market_returns)[0, 1]
     market_variance = np.var(market_returns)
@@ -186,10 +199,10 @@ def alpha(returns, market_returns, risk_free_rate=0.05, periods=252):
     Returns:
         Alpha
     """
-    if isinstance(returns, pd.Series):
-        returns = returns.dropna()
-    if isinstance(market_returns, pd.Series):
-        market_returns = market_returns.dropna()
+    returns, market_returns = _safe_align(returns, market_returns)
+
+    if len(returns) == 0:
+        return 0
 
     asset_return = np.mean(returns) * periods
     market_return = np.mean(market_returns) * periods

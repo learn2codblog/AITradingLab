@@ -8,6 +8,15 @@ import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta
 
+try:
+    from .logger import get_logger
+except ImportError:
+    import logging
+    def get_logger(name):
+        return logging.getLogger(name)
+
+logger = get_logger('data_loader')
+
 
 def load_stock_data(symbol: str, start_date=None, end_date=None, period: str = "3y") -> pd.DataFrame:
     """
@@ -65,7 +74,7 @@ def load_stock_data(symbol: str, start_date=None, end_date=None, period: str = "
         return df
 
     except Exception as e:
-        print(f"Error loading data for {symbol}: {e}")
+        logger.error(f"Error loading data for {symbol}: {e}")
         return None
 
 
@@ -84,7 +93,7 @@ def get_stock_info(symbol: str) -> dict:
         info = ticker.info
         return info
     except Exception as e:
-        print(f"Error getting info for {symbol}: {e}")
+        logger.error(f"Error getting info for {symbol}: {e}")
         return {}
 
 

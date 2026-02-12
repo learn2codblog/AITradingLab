@@ -67,14 +67,17 @@ def calculate_entry_target_prices(df: pd.DataFrame, fundamentals: dict = None) -
     else:
         bearish_score += 1
 
+    # RSI interpretation: momentum-based, not contrarian
+    # RSI < 30 means bearish momentum (oversold is a warning, not a buy signal by itself)
+    # RSI > 70 means bullish momentum but overbought risk
     if rsi < 30:
-        bullish_score += 1  # Oversold - potential reversal
+        bearish_score += 0.5  # Oversold = bearish momentum (potential reversal needs confirmation)
     elif rsi > 70:
-        bearish_score += 1  # Overbought
+        bearish_score += 0.5  # Overbought = risk of pullback
     elif rsi > 50:
-        bullish_score += 0.5
+        bullish_score += 0.5  # Bullish momentum
     else:
-        bearish_score += 0.5
+        bearish_score += 0.5  # Bearish momentum
 
     # Fundamental overlay
     if fundamentals:

@@ -296,7 +296,7 @@ def generate_signals(df: pd.DataFrame) -> dict:
     return {
         'signal': signal,
         'strength': strength,
-        'confidence': min(confidence + 0.3, 0.95),
+        'confidence': min(confidence, 0.90),  # No artificial inflation - raw confidence from signal count
         'buy_signals': buy_signals,
         'sell_signals': sell_signals,
         'trend': trend

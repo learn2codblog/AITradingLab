@@ -9,12 +9,39 @@ import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
+# ══════════════════════════════════════════════════════════════════════
+# AUTHENTICATION - CHECK LOGIN STATUS BEFORE ANYTHING ELSE
+# ══════════════════════════════════════════════════════════════════════
+
+from src.auth import AuthManager, create_login_page
+from ui.login_page import render_login_page
+
+# Initialize authentication
+auth_manager = AuthManager()
+auth_manager.initialize_session_state()
+
+# Check if user is authenticated
+if not auth_manager.is_authenticated():
+    # Render login page
+    render_login_page(auth_manager)
+    st.stop()
+
+# Check if session is valid (not expired)
+if not auth_manager.is_session_valid():
+    auth_manager.logout()
+    st.warning("⏰ Your session has expired. Please login again.")
+    render_login_page(auth_manager)
+    st.stop()
+
+# ══════════════════════════════════════════════════════════════════════
+# MAIN APPLICATION - USER IS AUTHENTICATED
+# ══════════════════════════════════════════════════════════════════════
+
 # Import backend modules
 from src.data_loader import load_stock_data
 from src.fundamental_analysis import get_fundamentals, get_news_sentiment, get_analyst_ratings, get_stock_news
 from src.technical_indicators import calculate_technical_indicators, generate_signals, get_trend
 from src.feature_engineering import engineer_advanced_features, select_best_features
-from src.models import train_random_forest, train_xgboost
 from src.metrics import sharpe_ratio, max_drawdown
 from src.portfolio_optimizer import optimize_portfolio
 from src.price_targets import calculate_entry_target_prices
@@ -25,28 +52,82 @@ from src.price_targets_enhanced import (
     get_all_available_sectors,
     get_nifty_top_n
 )
-from src.advanced_ai import (
-    calculate_advanced_indicators,
-    detect_candlestick_patterns,
-    detect_chart_patterns,
-    detect_market_regime,
-    detect_anomalies,
-    create_ensemble_prediction,
-    generate_ai_analysis,
-    predict_with_lstm,
-    analyze_news_sentiment,
-    calculate_feature_importance,
-    calculate_position_size,
-    backtest_strategy,
-    analyze_sentiment_transformer,
-    calculate_supertrend,
-    calculate_adx,
-    calculate_psar,
-    forecast_volatility_garch,
-    get_volatility_regime,
-    combined_trend_signal
-)
+# Heavy ML imports are lazily loaded to avoid large startup memory usage.
+# Use `load_ml_resources()` to import ML functions on demand.
+_ml_resources_loaded = False
+
+def load_ml_resources():
+    """Lazily import heavy ML modules and bind names into module globals.
+    Call this before using ML/advanced AI functions to avoid loading at startup.
+    """
+    global _ml_resources_loaded
+    if _ml_resources_loaded:
+        return
+
+    # Import models and advanced AI functions here (CPU-only packages expected)
+    try:
+        from src.models import train_random_forest, train_xgboost  # type: ignore
+        from src.advanced_ai import (
+            calculate_advanced_indicators,
+            detect_candlestick_patterns,
+            detect_chart_patterns,
+            detect_market_regime,
+            detect_anomalies,
+            create_ensemble_prediction,
+            generate_ai_analysis,
+            predict_with_lstm,
+            analyze_news_sentiment,
+            calculate_feature_importance,
+            calculate_position_size,
+            backtest_strategy,
+            analyze_sentiment_transformer,
+            calculate_supertrend,
+            calculate_adx,
+            calculate_psar,
+            forecast_volatility_garch,
+            get_volatility_regime,
+            combined_trend_signal,
+            predict_with_transformer,
+            detect_anomalies_autoencoder,
+        )
+
+        # Bind to globals so existing code can use the names directly
+        globals().update({
+            'train_random_forest': train_random_forest,
+            'train_xgboost': train_xgboost,
+            'calculate_advanced_indicators': calculate_advanced_indicators,
+            'detect_candlestick_patterns': detect_candlestick_patterns,
+            'detect_chart_patterns': detect_chart_patterns,
+            'detect_market_regime': detect_market_regime,
+            'detect_anomalies': detect_anomalies,
+            'create_ensemble_prediction': create_ensemble_prediction,
+            'generate_ai_analysis': generate_ai_analysis,
+            'predict_with_lstm': predict_with_lstm,
+            'analyze_news_sentiment': analyze_news_sentiment,
+            'calculate_feature_importance': calculate_feature_importance,
+            'calculate_position_size': calculate_position_size,
+            'backtest_strategy': backtest_strategy,
+            'analyze_sentiment_transformer': analyze_sentiment_transformer,
+            'calculate_supertrend': calculate_supertrend,
+            'calculate_adx': calculate_adx,
+            'calculate_psar': calculate_psar,
+            'forecast_volatility_garch': forecast_volatility_garch,
+            'get_volatility_regime': get_volatility_regime,
+            'combined_trend_signal': combined_trend_signal,
+            'predict_with_transformer': predict_with_transformer,
+            'detect_anomalies_autoencoder': detect_anomalies_autoencoder,
+        })
+
+        _ml_resources_loaded = True
+    except Exception as e:
+        # If lazy import fails, log but allow the app to continue; operations will raise later if used.
+        import logging
+        logging.getLogger('app_modern').warning(f"Lazy ML import failed: {e}")
+
 from src.risk_management import calculate_risk_metrics, calculate_stop_loss_take_profit
+from src.backtester import SimpleBacktester, WalkForwardBacktester, generate_ma_crossover_signals, generate_rsi_signals, generate_macd_signals
+from src.email_alerts import EmailAlertConfig, EmailAlertSender, AlertManager
+from src.zerodha_integration import ZerodhaAuthenticator, ZerodhaKite, AutomatedTrader, analyze_portfolio
 
 # Import UI modules
 from ui.styles import get_custom_css, get_icon_mapping
@@ -60,6 +141,12 @@ from ui.components import (
     create_comparison_chart,
     create_gauge_chart,
     create_heatmap
+)
+from ui.portfolio_builder import (
+    create_portfolio_builder,
+    create_advanced_portfolio_builder,
+    create_mobile_responsive_portfolio,
+    show_portfolio_recommendations
 )
 
 from sklearn.preprocessing import StandardScaler
@@ -85,6 +172,12 @@ def calculate_indicators_cached(_df):
     """Cached indicator calculation - uses _df to avoid hashing issues"""
     df = _df.copy()
     df = calculate_technical_indicators(df)
+    # Lazily import advanced indicators to avoid large memory use at startup
+    try:
+        load_ml_resources()
+    except Exception:
+        # If loading fails, allow the error to be surfaced when advanced indicators are used
+        pass
     df = calculate_advanced_indicators(df)
     return df
 
@@ -101,11 +194,102 @@ st.set_page_config(
     page_title="AI Trading Lab PRO+",
     page_icon="🚀",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
+    menu_items={
+        'Get Help': 'https://docs.streamlit.io',
+        'Report a bug': 'https://github.com/streamlit/streamlit/issues',
+        'About': '# AI Trading Lab PRO+ v3.0.0\n\nAI-Powered Trading & Portfolio Analysis Platform'
+    }
 )
 
 # Apply custom CSS
 st.markdown(get_custom_css(), unsafe_allow_html=True)
+
+# Add Mobile Responsive CSS
+mobile_responsive_css = """
+<style>
+    /* Mobile Responsiveness */
+    @media (max-width: 768px) {
+        /* Navigation buttons stack vertically on mobile */
+        [data-testid="column"] {
+            flex-wrap: wrap;
+        }
+        
+        /* Reduce padding and margins on mobile */
+        .stMetric {
+            padding: 0.5rem;
+        }
+        
+        /* Make selectbox full width on mobile */
+        .stSelectbox {
+            width: 100%;
+        }
+        
+        /* Stack columns on mobile */
+        .stColumn {
+            width: 100% !important;
+            margin-bottom: 1rem;
+        }
+        
+        /* Responsive font sizes */
+        h1 { font-size: 1.5rem; }
+        h2 { font-size: 1.2rem; }
+        h3 { font-size: 1rem; }
+        
+        /* Full width buttons on mobile */
+        .stButton button {
+            width: 100%;
+        }
+        
+        /* Reduce chart height on mobile */
+        .plotly-graph-div {
+            height: 250px !important;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        /* Extra small devices */
+        .header-box {
+            padding: 20px;
+        }
+        
+        .app-title {
+            font-size: 1.8rem;
+        }
+        
+        .app-tagline {
+            font-size: 0.9rem;
+        }
+        
+        /* Single column layout on very small screens */
+        [data-testid="column"] {
+            width: 100% !important;
+        }
+    }
+    
+    /* General responsive improvements */
+    .stDataFrame {
+        overflow-x: auto;
+    }
+    
+    /* Responsive slider width */
+    .stSlider {
+        width: 100%;
+    }
+    
+    /* Responsive metric cards */
+    .metric-card {
+        min-height: 80px;
+        padding: 1rem;
+    }
+    
+    /* Responsive expander */
+    .streamlit-expanderHeader {
+        font-size: 0.95rem;
+    }
+</style>
+"""
+st.markdown(mobile_responsive_css, unsafe_allow_html=True)
 
 # Get icon mapping
 icons = get_icon_mapping()
@@ -179,7 +363,15 @@ with col2:
     st.markdown('<p class="app-tagline">🚀 Smart Trading • 🤖 AI-Powered • 📈 Data-Driven Insights</p>', unsafe_allow_html=True)
 
 with col3:
-    st.markdown('<div style="text-align: right; padding-top: 12px;"><span class="version-badge">⚡ v2.1.1</span></div>', unsafe_allow_html=True)
+    # Display user info and version
+    col3_inner1, col3_inner2 = st.columns([1, 1])
+    with col3_inner1:
+        user_info = auth_manager.get_user_info()
+        if user_info:
+            st.markdown(f"<p style='text-align: right; margin: 0; font-size: 12px;'>👤 {user_info['name']}</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='text-align: right; margin: 0; font-size: 11px; color: #ccc;'>{user_info['email']}</p>", unsafe_allow_html=True)
+    with col3_inner2:
+        st.markdown('<div style="text-align: right; padding-top: 12px;"><span class="version-badge">⚡ v3.0.0</span></div>', unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -197,7 +389,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-nav_col1, nav_col2, nav_col3, nav_col4, nav_col5, nav_col6 = st.columns(6)
+nav_col1, nav_col2, nav_col3, nav_col4, nav_col5, nav_col6, nav_col7, nav_col8, nav_col9, nav_col10 = st.columns(10)
 
 with nav_col1:
     home_btn = st.button("🏠 Home", use_container_width=True, key="nav_home")
@@ -208,9 +400,17 @@ with nav_col3:
 with nav_col4:
     screener_btn = st.button("🎯 Screener", use_container_width=True, key="nav_screener")
 with nav_col5:
-    portfolio_btn = st.button("💼 Portfolio", use_container_width=True, key="nav_portfolio")
+    news_btn = st.button("📰 News", use_container_width=True, key="nav_news")
 with nav_col6:
+    deeplearning_btn = st.button("🔬 Deep Learning", use_container_width=True, key="nav_deeplearning")
+with nav_col7:
+    backtest_btn = st.button("📈 Backtest", use_container_width=True, key="nav_backtest")
+with nav_col8:
+    portfolio_btn = st.button("💼 Portfolio", use_container_width=True, key="nav_portfolio")
+with nav_col9:
     settings_btn = st.button("⚙️ Settings", use_container_width=True, key="nav_settings")
+with nav_col10:
+    logout_btn = st.button("🚪 Logout", use_container_width=True, key="nav_logout", help="Logout and return to login page")
 
 # Determine active page
 if 'active_page' not in st.session_state:
@@ -224,10 +424,24 @@ elif ai_btn:
     st.session_state.active_page = "🤖 AI Deep Analysis"
 elif screener_btn:
     st.session_state.active_page = "🎯 Smart Screener"
+elif news_btn:
+    st.session_state.active_page = "📰 General News"
+elif deeplearning_btn:
+    st.session_state.active_page = "🔬 Deep Learning"
+elif backtest_btn:
+    st.session_state.active_page = "📈 Strategy Backtest"
 elif portfolio_btn:
     st.session_state.active_page = "💼 Portfolio Manager"
 elif settings_btn:
     st.session_state.active_page = "⚙️ Settings"
+elif logout_btn:
+    # Handle logout
+    auth_manager.logout()
+    st.success("✅ Logged out successfully!")
+    st.info("Redirecting to login page...")
+    import time
+    time.sleep(1)
+    st.rerun()
 
 page = st.session_state.active_page
 
@@ -868,6 +1082,8 @@ elif page == "🤖 AI Deep Analysis":
 
                 # Calculate advanced indicators
                 try:
+                    # Ensure ML resources are loaded before calling advanced functions
+                    load_ml_resources()
                     stock_data = calculate_advanced_indicators(stock_data)
 
                     # Recalculate SuperTrend with user-defined parameters
@@ -1089,18 +1305,28 @@ elif page == "🤖 AI Deep Analysis":
                     ensemble_pred = ml_results.get('ensemble_prediction', 'Unknown')
                     ensemble_conf = ml_results.get('ensemble_confidence', 0)
 
+                    prediction_horizon = ml_results.get('prediction_horizon', '1-day')
+                    pa_context = ml_results.get('price_action_context', {})
+                    pa_agrees = pa_context.get('agrees_with_ml', True)
+                    pa_note = ''
+                    if not pa_agrees:
+                        pa_dir = pa_context.get('direction', 'Unknown')
+                        pa_note = f"<p style='color: #fbd38d; margin: 8px 0 0 0; font-size: 0.9rem;'>⚠️ Recent price action ({pa_dir}) disagrees with ML prediction - confidence reduced</p>"
+
                     st.markdown(f"""
                     <div style='background: linear-gradient(135deg, #1e3a8a, #7c3aed); padding: 20px; border-radius: 12px; margin-bottom: 20px;'>
                         <div style='display: flex; justify-content: space-between; align-items: center;'>
                             <div>
-                                <h4 style='color: rgba(255,255,255,0.8); margin: 0;'>Ensemble Prediction (5 ML Models)</h4>
+                                <h4 style='color: rgba(255,255,255,0.8); margin: 0;'>Ensemble Prediction ({prediction_horizon} horizon, {ml_results.get('models_used', 5)} ML Models)</h4>
                                 <h2 style='color: white; margin: 5px 0;'>{ensemble_pred}</h2>
+                                <p style='color: rgba(255,255,255,0.7); margin: 0; font-size: 0.85rem;'>Confidence: {ensemble_conf:.0%}</p>
                             </div>
                             <div style='text-align: right;'>
                                 <h4 style='color: rgba(255,255,255,0.8); margin: 0;'>Bullish Probability</h4>
                                 <h2 style='color: white; margin: 5px 0;'>{ml_results.get('bullish_probability', 0):.1%}</h2>
                             </div>
                         </div>
+                        {pa_note}
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -1158,6 +1384,8 @@ elif page == "🤖 AI Deep Analysis":
                     st.markdown("### 🧠 LSTM Deep Learning Prediction")
 
                     with st.spinner("Training LSTM neural network..."):
+                        # Ensure ML resources are loaded (lazy import)
+                        load_ml_resources()
                         lstm_results = predict_with_lstm(stock_data, lookback=60, forecast_days=5, epochs=30)
 
                     if 'error' not in lstm_results:
@@ -2621,229 +2849,281 @@ elif page == "🎯 Smart Screener":
         st.info("👆 Configure your screening parameters above and click '🚀 Start Screening' to begin analysis.")
 
 # ══════════════════════════════════════════════════════════════════════
+# GENERAL NEWS PAGE
+# ══════════════════════════════════════════════════════════════════════
+
+elif page == "📰 General News":
+    create_section_header("General News", "Latest Financial, Political & Market Announcements", "📰")
+    
+    # Import the news display module
+    from src.news_provider import NewsDisplay, NewsProvider
+    
+    # Render the news dashboard
+    NewsDisplay.render_news_dashboard()
+
+# ══════════════════════════════════════════════════════════════════════
 # PORTFOLIO MANAGER PAGE
 # ══════════════════════════════════════════════════════════════════════
 
 elif page == "💼 Portfolio Manager":
     create_section_header("Portfolio Manager", "Build & Optimize Your Investment Portfolio", "💼")
 
-    # Portfolio Input
-    col1, col2 = st.columns([3, 1])
+    # Tabs for different portfolio features
+    portfolio_tab1, portfolio_tab2, portfolio_tab3 = st.tabs([
+        "🏗️ Build Portfolio",
+        "💎 Advanced Tracker",
+        "📊 Analysis"
+    ])
+    
+    # ══════════════════════════════════════════════════════════════════
+    # TAB 1: PORTFOLIO BUILDER
+    # ══════════════════════════════════════════════════════════════════
+    with portfolio_tab1:
+        st.markdown("---")
+        
+        # Interactive Portfolio Builder
+        create_portfolio_builder()
+        
+        # Mobile responsive view
+        st.markdown("---")
+        create_mobile_responsive_portfolio()
+        
+        # Recommendations
+        st.markdown("---")
+        portfolio_items = st.session_state.get('portfolio_items', {})
+        show_portfolio_recommendations(portfolio_items)
+    
+    # ══════════════════════════════════════════════════════════════════
+    # TAB 2: ADVANCED PORTFOLIO TRACKER
+    # ══════════════════════════════════════════════════════════════════
+    with portfolio_tab2:
+        st.markdown("---")
+        create_advanced_portfolio_builder()
+    
+    # ══════════════════════════════════════════════════════════════════
+    # TAB 3: PORTFOLIO ANALYSIS (Original content)
+    # ══════════════════════════════════════════════════════════════════
+    with portfolio_tab3:
+        st.markdown("---")
+        
+        # Portfolio Input
+        col1, col2 = st.columns([3, 1])
 
-    with col1:
-        portfolio_symbols = st.text_area(
-            "Enter Portfolio Stocks (comma-separated)",
-            "RELIANCE.NS, TCS.NS, INFY.NS, HDFCBANK.NS, ICICIBANK.NS",
-            help="Enter stock symbols separated by commas"
-        )
+        with col1:
+            portfolio_symbols = st.text_area(
+                "Enter Portfolio Stocks (comma-separated)",
+                "RELIANCE.NS, TCS.NS, INFY.NS, HDFCBANK.NS, ICICIBANK.NS",
+                help="Enter stock symbols separated by commas"
+            )
 
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        analyze_portfolio_btn = st.button("📊 Analyze Portfolio", type="primary", use_container_width=True)
+        with col2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            analyze_portfolio_btn = st.button("📊 Analyze Portfolio", type="primary", use_container_width=True)
 
-    if analyze_portfolio_btn:
-        symbols_list = [s.strip().upper() for s in portfolio_symbols.split(",") if s.strip()]
+        if analyze_portfolio_btn:
+            symbols_list = [s.strip().upper() for s in portfolio_symbols.split(",") if s.strip()]
 
-        if not symbols_list:
-            st.error("❌ Please enter at least one stock symbol.")
-            st.stop()
+            if not symbols_list:
+                st.error("❌ Please enter at least one stock symbol.")
+                st.stop()
 
-        st.info(f"📊 Analyzing {len(symbols_list)} stocks...")
+            st.info(f"📊 Analyzing {len(symbols_list)} stocks...")
 
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+            progress_bar = st.progress(0)
+            status_text = st.empty()
 
-        portfolio_data = []
-        returns_dict = {}
+            portfolio_data = []
+            returns_dict = {}
 
-        for idx, symbol in enumerate(symbols_list):
-            try:
-                status_text.text(f"🤖 AI Analyzing {symbol}... ({idx+1}/{len(symbols_list)})")
-
-                # Load data
-                stock_data = load_stock_data(symbol, start_date, end_date)
-
-                if stock_data is None or len(stock_data) < 100:
-                    continue
-
-                # Calculate returns
-                returns = stock_data['Close'].pct_change().dropna()
-                total_return = (stock_data['Close'].iloc[-1] / stock_data['Close'].iloc[0]) - 1
-                annual_vol = returns.std() * np.sqrt(252)
-                sharpe = sharpe_ratio(returns)
-                max_dd = max_drawdown(returns)
-
-                # Get fundamentals
-                fundamentals = get_fundamentals(symbol)
-                sentiment = get_news_sentiment(symbol)
-
-                # Calculate technical indicators
-                stock_data = calculate_technical_indicators(stock_data)
-
-                # Use Advanced AI Analysis for comprehensive recommendation
+            for idx, symbol in enumerate(symbols_list):
                 try:
-                    # Calculate advanced indicators
-                    stock_data = calculate_advanced_indicators(stock_data)
+                    status_text.text(f"🤖 AI Analyzing {symbol}... ({idx+1}/{len(symbols_list)})")
 
-                    # Get AI analysis
-                    ai_analysis = generate_ai_analysis(stock_data, symbol, fundamentals)
+                    # Load data
+                    stock_data = load_stock_data(symbol, start_date, end_date)
 
-                    # Get AI recommendation
-                    ai_rec = ai_analysis.get('ai_recommendation', {})
-                    recommendation_text = ai_rec.get('recommendation', 'HOLD')
-                    confidence = ai_rec.get('confidence', 0.5)
+                    if stock_data is None or len(stock_data) < 100:
+                        continue
 
-                    # Get technical score
-                    tech_score = ai_analysis.get('technical_score', {})
-                    ai_score = tech_score.get('score', 50) / 100
-                    grade = tech_score.get('grade', 'C')
+                    # Calculate returns
+                    returns = stock_data['Close'].pct_change().dropna()
+                    total_return = (stock_data['Close'].iloc[-1] / stock_data['Close'].iloc[0]) - 1
+                    annual_vol = returns.std() * np.sqrt(252)
+                    sharpe = sharpe_ratio(returns)
+                    max_dd = max_drawdown(returns)
 
-                    # Get market regime
-                    regime = ai_analysis.get('market_regime', {})
-                    market_regime = regime.get('primary_regime', 'Unknown')
-                    risk_level = regime.get('risk_level', 'Medium')
+                    # Get fundamentals
+                    fundamentals = get_fundamentals(symbol)
+                    sentiment = get_news_sentiment(symbol)
 
-                    # Get ensemble ML prediction
-                    ml_ensemble = ai_analysis.get('ml_ensemble', {})
-                    ml_prediction = ml_ensemble.get('ensemble_prediction', 'Unknown')
-                    ml_confidence = ml_ensemble.get('ensemble_confidence', 0)
+                    # Calculate technical indicators
+                    stock_data = calculate_technical_indicators(stock_data)
 
-                    # Determine final recommendation with emoji
-                    if 'STRONG BUY' in recommendation_text:
-                        recommendation = "🟢 STRONG BUY"
-                        action = "Buy Now"
-                    elif 'BUY' in recommendation_text:
-                        recommendation = "🟢 BUY"
-                        action = "Buy on Dips"
-                    elif 'STRONG SELL' in recommendation_text:
-                        recommendation = "🔴 STRONG SELL"
-                        action = "Sell Immediately"
-                    elif 'SELL' in recommendation_text:
-                        recommendation = "🔴 SELL"
-                        action = "Exit Position"
-                    else:
-                        recommendation = "🟡 HOLD"
-                        action = "Wait & Watch"
+                    # Use Advanced AI Analysis for comprehensive recommendation
+                    try:
+                        # Calculate advanced indicators
+                        load_ml_resources()
+                        stock_data = calculate_advanced_indicators(stock_data)
+
+                        # Get AI analysis
+                        ai_analysis = generate_ai_analysis(stock_data, symbol, fundamentals)
+
+                        # Get AI recommendation
+                        ai_rec = ai_analysis.get('ai_recommendation', {})
+                        recommendation_text = ai_rec.get('recommendation', 'HOLD')
+                        confidence = ai_rec.get('confidence', 0.5)
+
+                        # Get technical score
+                        tech_score = ai_analysis.get('technical_score', {})
+                        ai_score = tech_score.get('score', 50) / 100
+                        grade = tech_score.get('grade', 'C')
+
+                        # Get market regime
+                        regime = ai_analysis.get('market_regime', {})
+                        market_regime = regime.get('primary_regime', 'Unknown')
+                        risk_level = regime.get('risk_level', 'Medium')
+
+                        # Get ensemble ML prediction
+                        ml_ensemble = ai_analysis.get('ml_ensemble', {})
+                        ml_prediction = ml_ensemble.get('ensemble_prediction', 'Unknown')
+                        ml_confidence = ml_ensemble.get('ensemble_confidence', 0)
+
+                        # Determine final recommendation with emoji
+                        if 'STRONG BUY' in recommendation_text:
+                            recommendation = "🟢 STRONG BUY"
+                            action = "Buy Now"
+                        elif 'BUY' in recommendation_text:
+                            recommendation = "🟢 BUY"
+                            action = "Buy on Dips"
+                        elif 'STRONG SELL' in recommendation_text:
+                            recommendation = "🔴 STRONG SELL"
+                            action = "Sell Immediately"
+                        elif 'SELL' in recommendation_text:
+                            recommendation = "🔴 SELL"
+                            action = "Exit Position"
+                        else:
+                            recommendation = "🟡 HOLD"
+                            action = "Wait & Watch"
+
+                    except Exception as e:
+                        # Fallback to basic analysis if advanced fails
+                        signals = generate_signals(stock_data)
+                        recommendation_text = signals.get('signal', 'HOLD')
+                        confidence = signals.get('confidence', 0.5)
+                        ai_score = sharpe * 0.5 + 0.5
+                        grade = 'C'
+                        market_regime = 'Unknown'
+                        risk_level = 'Medium'
+                        ml_prediction = 'Unknown'
+                        ml_confidence = 0
+
+                        if 'BUY' in recommendation_text:
+                            recommendation = "🟢 BUY"
+                            action = "Buy"
+                        elif 'SELL' in recommendation_text:
+                            recommendation = "🔴 SELL"
+                            action = "Sell"
+                        else:
+                            recommendation = "🟡 HOLD"
+                            action = "Hold"
+
+                    portfolio_data.append({
+                        'Symbol': symbol,
+                        'Current Price': stock_data['Close'].iloc[-1],
+                        'Total Return': total_return,
+                        'Annual Volatility': annual_vol,
+                        'Sharpe Ratio': sharpe,
+                        'Max Drawdown': max_dd,
+                        'AI Score': ai_score,
+                        'Grade': grade,
+                        'Market Regime': market_regime,
+                        'Risk Level': risk_level,
+                        'ML Prediction': ml_prediction,
+                        'Recommendation': recommendation,
+                        'Action': action,
+                        'Confidence': confidence
+                    })
+
+                    returns_dict[symbol] = returns
+
+                    progress_bar.progress((idx + 1) / len(symbols_list))
 
                 except Exception as e:
-                    # Fallback to basic analysis if advanced fails
-                    signals = generate_signals(stock_data)
-                    recommendation_text = signals.get('signal', 'HOLD')
-                    confidence = signals.get('confidence', 0.5)
-                    ai_score = sharpe * 0.5 + 0.5
-                    grade = 'C'
-                    market_regime = 'Unknown'
-                    risk_level = 'Medium'
-                    ml_prediction = 'Unknown'
-                    ml_confidence = 0
+                    continue
 
-                    if 'BUY' in recommendation_text:
-                        recommendation = "🟢 BUY"
-                        action = "Buy"
-                    elif 'SELL' in recommendation_text:
-                        recommendation = "🔴 SELL"
-                        action = "Sell"
-                    else:
-                        recommendation = "🟡 HOLD"
-                        action = "Hold"
+            progress_bar.empty()
+            status_text.empty()
 
-                portfolio_data.append({
-                    'Symbol': symbol,
-                    'Current Price': stock_data['Close'].iloc[-1],
-                    'Total Return': total_return,
-                    'Annual Volatility': annual_vol,
-                    'Sharpe Ratio': sharpe,
-                    'Max Drawdown': max_dd,
-                    'AI Score': ai_score,
-                    'Grade': grade,
-                    'Market Regime': market_regime,
-                    'Risk Level': risk_level,
-                    'ML Prediction': ml_prediction,
-                    'Recommendation': recommendation,
-                    'Action': action,
-                    'Confidence': confidence
-                })
+            if portfolio_data:
+                df_portfolio = pd.DataFrame(portfolio_data)
+                df_portfolio = df_portfolio.sort_values('AI Score', ascending=False)
 
-                returns_dict[symbol] = returns
+                # Display summary
+                st.markdown("### 📊 AI-Powered Portfolio Analysis")
 
-                progress_bar.progress((idx + 1) / len(symbols_list))
+                col1, col2, col3, col4 = st.columns(4)
 
-            except Exception as e:
-                continue
+                with col1:
+                    avg_return = df_portfolio['Total Return'].mean()
+                    create_metric_card("Avg Return", f"{avg_return:.2%}", icon="📈", color="#48bb78")
 
-        progress_bar.empty()
-        status_text.empty()
+                with col2:
+                    avg_sharpe = df_portfolio['Sharpe Ratio'].mean()
+                    create_metric_card("Avg Sharpe", f"{avg_sharpe:.2f}", icon="⚖️", color="#667eea")
 
-        if portfolio_data:
-            df_portfolio = pd.DataFrame(portfolio_data)
-            df_portfolio = df_portfolio.sort_values('AI Score', ascending=False)
+                with col3:
+                    avg_vol = df_portfolio['Annual Volatility'].mean()
+                    create_metric_card("Avg Volatility", f"{avg_vol:.2%}", icon="📉", color="#ed8936")
 
-            # Display summary
-            st.markdown("### 📊 AI-Powered Portfolio Analysis")
+                with col4:
+                    best_stock = df_portfolio.iloc[0]['Symbol']
+                    create_metric_card("Top Pick", best_stock, icon="🏆", color="#9f7aea")
 
-            col1, col2, col3, col4 = st.columns(4)
+                # Detailed table
+                st.markdown("### 📋 Detailed Analysis with Recommendations")
 
-            with col1:
-                avg_return = df_portfolio['Total Return'].mean()
-                create_metric_card("Avg Return", f"{avg_return:.2%}", icon="📈", color="#48bb78")
+                # Show recommendation summary cards
+                st.markdown("#### 🎯 Quick Actions")
+                rec_col1, rec_col2, rec_col3 = st.columns(3)
 
-            with col2:
-                avg_sharpe = df_portfolio['Sharpe Ratio'].mean()
-                create_metric_card("Avg Sharpe", f"{avg_sharpe:.2f}", icon="⚖️", color="#667eea")
+                buy_count = len(df_portfolio[df_portfolio['Recommendation'].str.contains('BUY')])
+                sell_count = len(df_portfolio[df_portfolio['Recommendation'].str.contains('SELL')])
+                hold_count = len(df_portfolio[df_portfolio['Recommendation'].str.contains('HOLD')])
 
-            with col3:
-                avg_vol = df_portfolio['Annual Volatility'].mean()
-                create_metric_card("Avg Volatility", f"{avg_vol:.2%}", icon="📉", color="#ed8936")
+                with rec_col1:
+                    st.markdown(f"""
+                    <div style='background: linear-gradient(135deg, #48bb78, #38a169); padding: 20px; border-radius: 12px; text-align: center;'>
+                        <h2 style='color: white; margin: 0;'>{buy_count}</h2>
+                        <p style='color: rgba(255,255,255,0.9); margin: 5px 0 0 0;'>🟢 BUY Signals</p>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-            with col4:
-                best_stock = df_portfolio.iloc[0]['Symbol']
-                create_metric_card("Top Pick", best_stock, icon="🏆", color="#9f7aea")
+                with rec_col2:
+                    st.markdown(f"""
+                    <div style='background: linear-gradient(135deg, #ed8936, #dd6b20); padding: 20px; border-radius: 12px; text-align: center;'>
+                        <h2 style='color: white; margin: 0;'>{hold_count}</h2>
+                        <p style='color: rgba(255,255,255,0.9); margin: 5px 0 0 0;'>🟡 HOLD Signals</p>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-            # Detailed table
-            st.markdown("### 📋 Detailed Analysis with Recommendations")
+                with rec_col3:
+                    st.markdown(f"""
+                    <div style='background: linear-gradient(135deg, #f56565, #e53e3e); padding: 20px; border-radius: 12px; text-align: center;'>
+                        <h2 style='color: white; margin: 0;'>{sell_count}</h2>
+                        <p style='color: rgba(255,255,255,0.9); margin: 5px 0 0 0;'>🔴 SELL Signals</p>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-            # Show recommendation summary cards
-            st.markdown("#### 🎯 Quick Actions")
-            rec_col1, rec_col2, rec_col3 = st.columns(3)
+                st.markdown("<br>", unsafe_allow_html=True)
 
-            buy_count = len(df_portfolio[df_portfolio['Recommendation'].str.contains('BUY')])
-            sell_count = len(df_portfolio[df_portfolio['Recommendation'].str.contains('SELL')])
-            hold_count = len(df_portfolio[df_portfolio['Recommendation'].str.contains('HOLD')])
-
-            with rec_col1:
-                st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #48bb78, #38a169); padding: 20px; border-radius: 12px; text-align: center;'>
-                    <h2 style='color: white; margin: 0;'>{buy_count}</h2>
-                    <p style='color: rgba(255,255,255,0.9); margin: 5px 0 0 0;'>🟢 BUY Signals</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with rec_col2:
-                st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #ed8936, #dd6b20); padding: 20px; border-radius: 12px; text-align: center;'>
-                    <h2 style='color: white; margin: 0;'>{hold_count}</h2>
-                    <p style='color: rgba(255,255,255,0.9); margin: 5px 0 0 0;'>🟡 HOLD Signals</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with rec_col3:
-                st.markdown(f"""
-                <div style='background: linear-gradient(135deg, #f56565, #e53e3e); padding: 20px; border-radius: 12px; text-align: center;'>
-                    <h2 style='color: white; margin: 0;'>{sell_count}</h2>
-                    <p style='color: rgba(255,255,255,0.9); margin: 5px 0 0 0;'>🔴 SELL Signals</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            df_display = df_portfolio.copy()
-            df_display['Current Price'] = df_display['Current Price'].apply(lambda x: f"₹{x:.2f}")
-            df_display['Total Return'] = df_display['Total Return'].apply(lambda x: f"{x:.2%}")
-            df_display['Annual Volatility'] = df_display['Annual Volatility'].apply(lambda x: f"{x:.2%}")
-            df_display['Sharpe Ratio'] = df_display['Sharpe Ratio'].apply(lambda x: f"{x:.2f}")
-            df_display['Max Drawdown'] = df_display['Max Drawdown'].apply(lambda x: f"{x:.2%}")
-            df_display['AI Score'] = df_display['AI Score'].apply(lambda x: f"{x:.0%}")
-            df_display['Confidence'] = df_display['Confidence'].apply(lambda x: f"{x:.0%}")
+                df_display = df_portfolio.copy()
+                df_display['Current Price'] = df_display['Current Price'].apply(lambda x: f"₹{x:.2f}")
+                df_display['Total Return'] = df_display['Total Return'].apply(lambda x: f"{x:.2%}")
+                df_display['Annual Volatility'] = df_display['Annual Volatility'].apply(lambda x: f"{x:.2%}")
+                df_display['Sharpe Ratio'] = df_display['Sharpe Ratio'].apply(lambda x: f"{x:.2f}")
+                df_display['Max Drawdown'] = df_display['Max Drawdown'].apply(lambda x: f"{x:.2%}")
+                df_display['AI Score'] = df_display['AI Score'].apply(lambda x: f"{x:.0%}")
+                df_display['Confidence'] = df_display['Confidence'].apply(lambda x: f"{x:.0%}")
 
             # Reorder columns for better display
             display_columns = ['Symbol', 'Current Price', 'Total Return', 'Sharpe Ratio',
@@ -3024,6 +3304,331 @@ elif page == "💼 Portfolio Manager":
             st.warning("❌ Could not analyze any stocks from the portfolio.")
 
 # ══════════════════════════════════════════════════════════════════════
+# DEEP LEARNING PAGE
+# ══════════════════════════════════════════════════════════════════════
+
+elif page == "🔬 Deep Learning":
+    create_section_header("Deep Learning Models", "Advanced Keras-based Predictions", "🔬")
+    
+    st.markdown("### 🤖 Transformer vs Traditional Models")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        symbol = st.text_input("Enter Stock Symbol (e.g., INFY)", value="INFY", key="dl_symbol")
+    with col2:
+        if st.button("🔄 Load Data", key="dl_load"):
+            st.session_state.dl_data_loaded = True
+    
+    if 'dl_data_loaded' in st.session_state and st.session_state.dl_data_loaded:
+        try:
+            # Load data
+            df = load_stock_data_cached(symbol, start_date, end_date)
+            df = calculate_indicators_cached(df)
+            
+            st.success(f"✅ Loaded {len(df)} rows for {symbol}")
+            
+            # Model selection tabs
+            dl_tab1, dl_tab2, dl_tab3 = st.tabs([
+                "🔄 Transformer Forecasting",
+                "📊 Multi-Step Predictions",
+                "🎯 Autoencoder Anomalies"
+            ])
+            
+            with dl_tab1:
+                st.markdown("#### Transformer-based Time Series Forecasting")
+                st.markdown("""
+                The Transformer model uses self-attention mechanisms to capture long-range dependencies
+                in price movements. It includes:
+                - Positional encoding for temporal information
+                - Multi-head attention for pattern recognition
+                - Fed-forward networks for feature transformation
+                """)
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    seq_len = st.slider("Sequence Length", 30, 120, 60, key="seq_len")
+                with col2:
+                    n_heads = st.slider("Attention Heads", 2, 8, 4, key="n_heads")
+                with col3:
+                    n_layers = st.slider("Transformer Layers", 1, 4, 2, key="n_layers")
+                
+                if st.button("🚀 Train Transformer", key="train_transformer"):
+                    with st.spinner("Training Transformer model..."):
+                        try:
+                            load_ml_resources()
+                        except Exception as e:
+                            st.error(f"Failed to load ML resources: {e}")
+                        else:
+                            result = predict_with_transformer(
+                                df, seq_len=seq_len, forecast_len=5,
+                                epochs=50, n_heads=n_heads, n_layers=n_layers,
+                                d_model=64
+                            )
+                        
+                        if 'error' not in result:
+                            st.success("✅ Model trained successfully!")
+                            
+                            # Display predictions
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric(
+                                    "1-Day Forecast",
+                                    f"₹{result['predictions']['1_day']['price']:.2f}",
+                                    f"{result['predictions']['1_day']['change_pct']:+.2f}%"
+                                )
+                            with col2:
+                                st.metric(
+                                    "3-Day Forecast",
+                                    f"₹{result['predictions']['3_day']['price']:.2f}",
+                                    f"{result['predictions']['3_day']['change_pct']:+.2f}%"
+                                )
+                            with col3:
+                                st.metric(
+                                    "5-Day Forecast",
+                                    f"₹{result['predictions']['5_day']['price']:.2f}",
+                                    f"{result['predictions']['5_day']['change_pct']:+.2f}%"
+                                )
+                            
+                            # Trend
+                            st.markdown(f"**Overall Trend:** {result['overall_trend']}")
+                            st.markdown(f"**Model Error (MAE):** {result['mae_test']:.4f}")
+                            
+                            # Plot predictions
+                            fig = go.Figure()
+                            fig.add_trace(go.Scatter(
+                                y=result['all_daily_predictions'],
+                                name='Predictions',
+                                mode='lines+markers'
+                            ))
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.error(f"❌ Error: {result.get('error')}")
+            
+            with dl_tab2:
+                st.markdown("#### Multi-Step Price Forecasting")
+                st.markdown("""
+                This model predicts prices for multiple future timeframes:
+                - 1 day: Capture immediate momentum
+                - 3 days: Short-term trend
+                - 5 days: Medium-term direction
+                
+                Useful for swing trading and position sizing.
+                """)
+                
+                if st.button("📊 Generate Multi-Step Forecast", key="multistep"):
+                    with st.spinner("Generating predictions..."):
+                        load_ml_resources()
+                        lstm_result = predict_with_lstm(df, lookback=60, forecast_days=5, epochs=50)
+                        
+                        if 'error' not in lstm_result:
+                            st.success("✅ LSTM predictions generated!")
+                            
+                            # Compare with current price
+                            current = lstm_result['current_price']
+                            predictions = lstm_result['predictions']
+                            
+                            comparison_df = pd.DataFrame({
+                                'Day': [1, 2, 3, 4, 5],
+                                'Predicted Price': predictions,
+                                'Change %': [(p - current) / current * 100 for p in predictions]
+                            })
+                            
+                            st.dataframe(comparison_df, use_container_width=True)
+                            
+                            # Visualization
+                            fig = go.Figure()
+                            fig.add_hline(y=current, name="Current Price", line_dash="dash")
+                            fig.add_trace(go.Scatter(
+                                y=predictions,
+                                name='5-Day Forecast',
+                                mode='lines+markers',
+                                fill='tozeroy'
+                            ))
+                            fig.update_layout(title="5-Day Price Forecast", yaxis_title="Price")
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.error(f"Error: {lstm_result.get('error')}")
+            
+            with dl_tab3:
+                st.markdown("#### Autoencoder Anomaly Detection")
+                st.markdown("""
+                Detects unusual patterns in:
+                - Volume spikes above normal
+                - Price movements deviation
+                - Volatility expansion
+                - Volume-price divergence
+                
+                Useful for identifying potential breakouts or false signals.
+                """)
+                
+                if st.button("🎯 Detect Anomalies", key="detect_anomalies_btn"):
+                    with st.spinner("Training autoencoder..."):
+                        anomaly_result = detect_anomalies_autoencoder(
+                            df, epochs=50, contamination=0.05
+                        )
+                        
+                        if 'error' not in anomaly_result:
+                            st.success(f"✅ Found {anomaly_result['anomalies_detected']} anomalies")
+                            
+                            # Metrics
+                            col1, col2, col3, col4 = st.columns(4)
+                            with col1:
+                                st.metric("Total Samples", anomaly_result['total_samples'])
+                            with col2:
+                                st.metric("Anomalies", anomaly_result['anomalies_detected'])
+                            with col3:
+                                st.metric("Anomaly Ratio %", f"{anomaly_result['anomaly_ratio']*100:.2f}%")
+                            with col4:
+                                st.metric("Threshold", f"{anomaly_result['threshold']:.4f}")
+                            
+                            # Display detected anomalies
+                            if anomaly_result['detected_anomalies']:
+                                st.markdown("#### Top Anomalies Detected:")
+                                anomalies_df = pd.DataFrame(anomaly_result['detected_anomalies'])
+                                st.dataframe(anomalies_df, use_container_width=True)
+                        else:
+                            st.error(f"Error: {anomaly_result.get('error')}")
+        
+        except Exception as e:
+            st.error(f"Error: {str(e)}")
+
+
+# STRATEGY BACKTEST PAGE
+# ══════════════════════════════════════════════════════════════════════
+
+elif page == "📈 Strategy Backtest":
+    create_section_header("Strategy Backtesting", "Test & Optimize Trading Strategies", "📈")
+    
+    st.markdown("### 📊 Backtest Your Trading Strategies")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        symbol = st.text_input("Stock Symbol", value="INFY", key="bt_symbol")
+    with col2:
+        strategy = st.selectbox(
+            "Strategy",
+            ["Moving Average Crossover", "RSI Oversold/Overbought", "MACD Signal", "Custom"],
+            key="bt_strategy"
+        )
+    with col3:
+        initial_capital = st.number_input("Initial Capital (₹)", value=100000, min_value=1000, key="bt_capital")
+    
+    if st.button("▶️ Run Backtest", key="run_backtest"):
+        try:
+            # Load data
+            df = load_stock_data_cached(symbol, start_date, end_date)
+            df = calculate_indicators_cached(df)
+            
+            st.success(f"✅ Loaded {len(df)} days of data")
+            
+            # Generate signals
+            if strategy == "Moving Average Crossover":
+                col1, col2 = st.columns(2)
+                with col1:
+                    fast_ma = st.slider("Fast MA Period", 5, 30, 20)
+                with col2:
+                    slow_ma = st.slider("Slow MA Period", 30, 200, 50)
+                signals = generate_ma_crossover_signals(df, fast_ma, slow_ma)
+            
+            elif strategy == "RSI Oversold/Overbought":
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    rsi_period = st.slider("RSI Period", 5, 30, 14)
+                with col2:
+                    oversold = st.slider("Oversold Level", 10, 40, 30)
+                with col3:
+                    overbought = st.slider("Overbought Level", 60, 90, 70)
+                signals = generate_rsi_signals(df, rsi_period, oversold, overbought)
+            
+            elif strategy == "MACD Signal":
+                signals = generate_macd_signals(df)
+            
+            else:
+                signals = pd.Series(0, index=df.index)
+            
+            # Run backtest
+            backtester = SimpleBacktester(initial_capital=initial_capital, commission=0.001)
+            result = backtester.backtest(df, signals)
+            
+            # Display results
+            st.markdown("### 📊 Backtest Results")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Initial Capital", f"₹{result['initial_capital']:,.0f}")
+            with col2:
+                st.metric("Final Value", f"₹{result['final_equity']:,.0f}")
+            with col3:
+                st.metric("Total Return", f"{result['total_return_pct']:+.2f}%")
+            with col4:
+                st.metric("Sharpe Ratio", f"{result['sharpe_ratio']:.2f}")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Max Drawdown", f"{result['max_drawdown_pct']:.2f}%")
+            with col2:
+                st.metric("Total Trades", result['num_trades'])
+            with col3:
+                st.metric("Win Rate", f"{result['win_rate_pct']:.1f}%")
+            with col4:
+                st.metric("Avg Profit/Trade", f"₹{result['avg_profit_per_trade']:.2f}")
+            
+            # Equity curve
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                y=result['equity_curve'],
+                fill='tozeroy',
+                name='Equity Curve',
+                line=dict(color='green')
+            ))
+            fig.update_layout(
+                title="Equity Curve",
+                yaxis_title="Portfolio Value (₹)",
+                xaxis_title="Time",
+                hovermode='x unified'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Trades table
+            if result['trades']:
+                st.markdown("### 📋 Trade History")
+                trades_df = pd.DataFrame(result['trades'])
+                st.dataframe(trades_df, use_container_width=True)
+            
+            # Metrics summary
+            st.markdown("### 📈 Advanced Metrics")
+            metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
+            
+            with metrics_col1:
+                st.metric("Profit Factor", f"{result['metrics']['profit_factor']:.2f}")
+            with metrics_col2:
+                st.metric("Recovery Factor", f"{result['metrics']['recovery_factor']:.2f}")
+            with metrics_col3:
+                st.metric("Calmar Ratio", f"{result['metrics']['calmar_ratio']:.2f}")
+            
+        except Exception as e:
+            st.error(f"Backtest Error: {str(e)}")
+    
+    # Strategy information
+    st.markdown("---")
+    st.markdown("""
+    ### 📚 Available Strategies
+    
+    - **Moving Average Crossover**: Buy when fast MA > slow MA, sell when reverse
+    - **RSI Strategy**: Buy when RSI < oversold level, sell when RSI > overbought
+    - **MACD Signal**: Buy when MACD > signal line, sell when reverse
+    
+    ### 💡 Tips for Backtesting
+    1. Use at least 2-3 years of data for reliable results
+    2. Adjust commissions to match your broker
+    3. Consider slippage for realistic returns
+    4. Test walk-forward analysis for robustness
+    5. Compare with buy-and-hold benchmark
+    """)
+
+
 # SETTINGS PAGE
 # ══════════════════════════════════════════════════════════════════════
 
@@ -3036,7 +3641,26 @@ elif page == "⚙️ Settings":
 
     with col1:
         st.checkbox("Show detailed explanations", value=True)
-        st.checkbox("Enable dark mode", value=False)
+        dark_mode = st.checkbox("Enable dark mode", value=False, key="dark_mode_toggle")
+        if dark_mode:
+            st.markdown("""
+            <style>
+            .stApp { background: #1a1a1e !important; }
+            .main { background: #1a1a1e !important; }
+            .main > div { background: #1a1a1e !important; }
+            [data-testid="stMetricValue"] { color: #e0e0e0 !important; }
+            h1, h2, h3, h4, h5, h6 { color: #e0e0e0 !important; }
+            .stButton > button { background: #2d2d3d !important; color: #a0a0ff !important; }
+            [data-testid="metric-container"] { background: #2d2d3d !important; }
+            .custom-card { background: #2d2d3d !important; color: #e0e0e0 !important; }
+            .stTextInput>div>div>input { background: #2d2d3d !important; color: #e0e0e0 !important; }
+            .stSelectbox > div > div { background: #2d2d3d !important; color: #e0e0e0 !important; }
+            .stTabs [data-baseweb="tab-list"] { background: #2d2d3d !important; }
+            .streamlit-expanderHeader { background: #2d2d3d !important; color: #e0e0e0 !important; }
+            .stAlert { background: #2d2d3d !important; color: #e0e0e0 !important; }
+            ::-webkit-scrollbar-track { background: #2d2d3d !important; }
+            </style>
+            """, unsafe_allow_html=True)
         st.checkbox("Show technical indicators", value=True)
 
     with col2:

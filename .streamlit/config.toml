@@ -1,0 +1,21 @@
+[theme]
+primaryColor = "#667eea"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
+textColor = "#262730"
+font = "sans-serif"
+
+[server]
+headless = false
+address = "0.0.0.0"
+port = 8501
+runOnSave = true
+
+[client]
+showErrorDetails = false
+
+[browser]
+gatherUsageStats = false
+
+[server]
+pythonVersion = "3.11"  # Pinned for TensorFlow 2.15 compatibility

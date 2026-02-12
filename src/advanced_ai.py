@@ -1021,9 +1021,25 @@ def predict_with_lstm(df: pd.DataFrame, lookback: int = 60, forecast_days: int =
         if len(feature_data) < min_required:
             return {'error': 'Too many NaN values after feature preparation'}
 
-        # Scale features
+        # Determine train/val/test split indices BEFORE scaling to prevent data leakage
+        raw_data = feature_data.values
+
+        # Create sequences first on raw data to determine split indices
+        all_indices = list(range(lookback, len(raw_data) - forecast_days))
+
+        # Use TimeSeriesSplit to get train/val split
+        tscv = TimeSeriesSplit(n_splits=3)
+        for train_idx, val_idx in tscv.split(all_indices):
+            pass  # Get last fold indices
+
+        # Map sequence indices back to raw data indices
+        # train_idx refers to indices within all_indices
+        train_end_raw = all_indices[train_idx[-1]] + forecast_days  # Last raw index used by training
+
+        # Fit scaler ONLY on training portion of raw data (no data leakage)
         scaler = MinMaxScaler(feature_range=(0, 1))
-        scaled_data = scaler.fit_transform(feature_data.values)
+        scaler.fit(raw_data[:train_end_raw])
+        scaled_data = scaler.transform(raw_data)
 
         # Create sequences with all features, predict only Close
         X, y = [], []
@@ -1034,14 +1050,7 @@ def predict_with_lstm(df: pd.DataFrame, lookback: int = 60, forecast_days: int =
         X = np.array(X)
         y = np.array(y)
 
-        # Use TimeSeriesSplit for proper time-series cross-validation
-        tscv = TimeSeriesSplit(n_splits=3)
-        cv_scores = []
-
-        # Get the last fold for final training
-        for train_idx, val_idx in tscv.split(X):
-            pass  # Just get last indices
-
+        # Apply the same split
         X_train, X_val = X[train_idx], X[val_idx]
         y_train, y_val = y[train_idx], y[val_idx]
 
@@ -2239,6 +2248,7 @@ def create_ensemble_prediction(df: pd.DataFrame, quick_mode: bool = False, deep_
     df_features = df.copy()
 
     # Create target (1 = price up next day, 0 = down)
+    # NOTE: This is a 1-day forward prediction target
     df_features['Target'] = (df_features['Close'].shift(-1) > df_features['Close']).astype(int)
 
     # Select features based on mode
@@ -2386,80 +2396,53 @@ def create_ensemble_prediction(df: pd.DataFrame, quick_mode: bool = False, deep_
         ensemble_prediction = 'Neutral'
         ensemble_confidence = 0
 
-    # ═══ IMPORTANT: Align ensemble with recent price action ═══
-    # This helps resolve contradictions between individual models and ensemble
+    # ═══ Price Action Context (informational, does NOT override ML) ═══
+    # Instead of overriding ML predictions, we report price action context
+    # so the user can see when ML disagrees with recent price action
+    price_action_context = {}
     if len(df) > 20:
         try:
-            # Calculate recent price action signals
             recent_close = df['Close'].iloc[-1]
             close_5d_ago = df['Close'].iloc[-5] if len(df) >= 5 else recent_close
             close_10d_ago = df['Close'].iloc[-10] if len(df) >= 10 else recent_close
             close_20d_ago = df['Close'].iloc[-20] if len(df) >= 20 else recent_close
 
-            # Short-term trend (5-day)
             short_trend = (recent_close / close_5d_ago - 1) * 100
-
-            # Medium-term trend (10-day)
             med_trend = (recent_close / close_10d_ago - 1) * 100
 
-            # Get moving average alignment
             sma_20 = df['Close'].rolling(20).mean().iloc[-1] if len(df) >= 20 else recent_close
             sma_50 = df['Close'].rolling(50).mean().iloc[-1] if len(df) >= 50 else recent_close
 
-            # Price action score: positive = bullish, negative = bearish
             price_action_score = 0
+            if short_trend > 2: price_action_score += 1
+            elif short_trend < -2: price_action_score -= 1
+            if med_trend > 3: price_action_score += 1
+            elif med_trend < -3: price_action_score -= 1
+            if recent_close > sma_20: price_action_score += 1
+            else: price_action_score -= 1
+            if recent_close > sma_50: price_action_score += 0.5
+            else: price_action_score -= 0.5
+            if sma_20 > sma_50: price_action_score += 0.5
+            else: price_action_score -= 0.5
 
-            # Recent price momentum
-            if short_trend > 2:
-                price_action_score += 1
-            elif short_trend < -2:
-                price_action_score -= 1
-
-            if med_trend > 3:
-                price_action_score += 1
-            elif med_trend < -3:
-                price_action_score -= 1
-
-            # Price relative to moving averages
-            if recent_close > sma_20:
-                price_action_score += 1
+            if price_action_score >= 2:
+                pa_direction = 'Bullish'
+            elif price_action_score <= -2:
+                pa_direction = 'Bearish'
             else:
-                price_action_score -= 1
+                pa_direction = 'Neutral'
 
-            if recent_close > sma_50:
-                price_action_score += 0.5
-            else:
-                price_action_score -= 0.5
+            price_action_context = {
+                'direction': pa_direction,
+                'score': price_action_score,
+                'short_trend_5d': round(short_trend, 2),
+                'med_trend_10d': round(med_trend, 2),
+                'agrees_with_ml': (pa_direction == ensemble_prediction) or pa_direction == 'Neutral'
+            }
 
-            # SMA alignment (golden cross / death cross potential)
-            if sma_20 > sma_50:
-                price_action_score += 0.5
-            else:
-                price_action_score -= 0.5
-
-            # Adjust ensemble prediction if there's strong price action conflict
-            # This prevents AI from being bearish when chart clearly shows bullish patterns
-            if price_action_score >= 2.5 and ensemble_prediction == 'Bearish':
-                # Strong bullish price action but ensemble says bearish - likely a conflict
-                # Adjust confidence down and potentially flip
-                if ensemble_confidence < 0.6:
-                    ensemble_prediction = 'Bullish'
-                    ensemble_confidence = 0.55
-                    avg_prob = 0.55
-                    weighted_avg = 0.55
-                else:
-                    # Reduce confidence to reflect uncertainty
-                    ensemble_confidence = max(0.5, ensemble_confidence - 0.15)
-
-            elif price_action_score <= -2.5 and ensemble_prediction == 'Bullish':
-                # Strong bearish price action but ensemble says bullish - conflict
-                if ensemble_confidence < 0.6:
-                    ensemble_prediction = 'Bearish'
-                    ensemble_confidence = 0.55
-                    avg_prob = 0.45
-                    weighted_avg = 0.45
-                else:
-                    ensemble_confidence = max(0.5, ensemble_confidence - 0.15)
+            # Only reduce confidence when there's a strong disagreement - do NOT flip predictions
+            if not price_action_context['agrees_with_ml'] and abs(price_action_score) >= 2.5:
+                ensemble_confidence = max(0.4, ensemble_confidence - 0.15)
 
         except Exception:
             pass  # Keep original ensemble if price action check fails
@@ -2467,12 +2450,14 @@ def create_ensemble_prediction(df: pd.DataFrame, quick_mode: bool = False, deep_
     return {
         'ensemble_prediction': ensemble_prediction,
         'ensemble_confidence': ensemble_confidence,
+        'prediction_horizon': '1-day',  # Clearly label the prediction timeframe
         'bullish_probability': avg_prob,
         'weighted_probability': weighted_avg,
         'individual_models': predictions,
         'features_used': available_features,
         'analysis_mode': 'Quick' if quick_mode else ('Deep' if deep_mode else 'Standard'),
-        'models_used': len(models)
+        'models_used': len(models),
+        'price_action_context': price_action_context
     }
 
 
@@ -2734,7 +2719,26 @@ def calculate_technical_score(df: pd.DataFrame) -> dict:
     macd = latest.get('MACD', 0)
     macd_signal = latest.get('MACD_Signal', 0)
 
-    rsi_score = 12.5 if 40 < rsi < 60 else (25 if rsi < 30 else (0 if rsi > 70 else 15))
+    # RSI scoring: Higher score = more bullish momentum
+    # 50-65: Healthy bullish momentum (best)
+    # 40-50: Neutral/weak
+    # 30-40: Bearish momentum
+    # <30: Oversold (potential reversal but NOT confirmed bullish - score low)
+    # 65-70: Strong but approaching overbought
+    # >70: Overbought (bearish risk - score low)
+    if 50 <= rsi <= 65:
+        rsi_score = 12.5  # Healthy bullish momentum
+    elif 40 <= rsi < 50:
+        rsi_score = 8      # Neutral/slightly bearish
+    elif 65 < rsi <= 70:
+        rsi_score = 10     # Strong but approaching overbought
+    elif rsi > 70:
+        rsi_score = 3      # Overbought - bearish risk
+    elif 30 <= rsi < 40:
+        rsi_score = 5      # Bearish momentum
+    else:  # rsi < 30
+        rsi_score = 3      # Oversold - not confirmed bullish yet
+
     macd_score = 12.5 if macd > macd_signal else 5
     momentum_points = rsi_score + macd_score
     breakdown['Momentum'] = momentum_points
@@ -2874,18 +2878,42 @@ def generate_ai_recommendation(analysis: dict, fundamentals: dict = None, analys
     else:
         buy_pct = sell_pct = hold_pct = 0.33
 
+    # Check for conflicting signals: if buy and sell are both significant, reduce confidence
+    # This prevents the system from giving a strong BUY when half the signals say SELL
+    signal_conflict = min(buy_score, sell_score) / max(buy_score, sell_score, 0.01)
+
     # Final recommendation
-    if buy_pct > 0.5:
+    if signal_conflict > 0.7:
+        # Strong conflict (>70%) between buy and sell signals - force HOLD
+        recommendation = 'HOLD'
+        action = 'Wait for clearer signal - high indicator conflict'
+        confidence = 0.25  # Low confidence due to high conflict
+    elif signal_conflict > 0.5:
+        # Moderate conflict - reduce confidence but allow directional recommendation
+        if buy_pct > sell_pct:
+            recommendation = 'BUY'
+            action = 'Caution: moderate signal conflict'
+            confidence = buy_pct * 0.5
+        elif sell_pct > buy_pct:
+            recommendation = 'SELL'
+            action = 'Caution: moderate signal conflict'
+            confidence = sell_pct * 0.5
+        else:
+            recommendation = 'HOLD'
+            action = 'Wait for clearer signal'
+            confidence = 0.3
+    elif buy_pct > 0.5:
         recommendation = 'STRONG BUY' if buy_pct > 0.7 else 'BUY'
         action = 'Enter long position'
+        confidence = buy_pct * (1 - signal_conflict * 0.5)  # Reduce confidence by conflict level
     elif sell_pct > 0.5:
         recommendation = 'STRONG SELL' if sell_pct > 0.7 else 'SELL'
         action = 'Exit or short position'
+        confidence = sell_pct * (1 - signal_conflict * 0.5)
     else:
         recommendation = 'HOLD'
         action = 'Wait for clearer signal'
-
-    confidence = max(buy_pct, sell_pct, hold_pct)
+        confidence = max(buy_pct, sell_pct, hold_pct)
 
     # Detect contradictions between signals
     contradictions = []
@@ -2939,4 +2967,435 @@ def generate_ai_recommendation(analysis: dict, fundamentals: dict = None, analys
         'warnings': warnings,
         'analysis_depth': analysis_depth
     }
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TRANSFORMER-BASED TIME SERIES FORECASTING
+# ══════════════════════════════════════════════════════════════════════
+
+def get_positional_encoding(seq_len: int, d_model: int) -> np.ndarray:
+    """
+    Generate positional encoding for Transformer
+    
+    Args:
+        seq_len: Sequence length
+        d_model: Model dimension
+    
+    Returns:
+        Positional encoding matrix
+    """
+    pos = np.arange(seq_len)[:, np.newaxis]
+    dim_idxs = np.arange(d_model)[np.newaxis, :]
+    
+    angle_rates = 1 / np.power(10000, (2 * (dim_idxs // 2)) / np.float32(d_model))
+    pos_encoding = pos * angle_rates
+    
+    # Apply sin to even indices, cos to odd indices
+    pos_encoding[:, 0::2] = np.sin(pos_encoding[:, 0::2])
+    pos_encoding[:, 1::2] = np.cos(pos_encoding[:, 1::2])
+    
+    return pos_encoding[np.newaxis, ...]
+
+
+def build_transformer_model(seq_len: int = 60, forecast_len: int = 5, 
+                           n_features: int = 1, n_heads: int = 4, 
+                           n_layers: int = 2, d_model: int = 64):
+    """
+    Build Transformer model for time series forecasting
+    
+    Args:
+        seq_len: Input sequence length
+        forecast_len: Output forecast length
+        n_features: Number of input features
+        n_heads: Number of attention heads
+        d_model: Model/embedding dimension
+        n_layers: Number of transformer layers
+    
+    Returns:
+        Compiled Keras model
+    """
+    try:
+        from tensorflow.keras.models import Model
+        from tensorflow.keras.layers import (
+            Input, Dense, MultiHeadAttention, LayerNormalization,
+            Dropout, Add, Flatten, RepeatVector, TimeDistributed,
+            Embedding, Reshape
+        )
+        from tensorflow.keras.optimizers import Adam
+        import tensorflow as tf
+        
+        # Input
+        inputs = Input(shape=(seq_len, n_features))
+        
+        # Linear projection to d_model dimensions
+        x = Dense(d_model)(inputs)
+        
+        # Add positional encoding
+        pos_encoding = get_positional_encoding(seq_len, d_model)
+        pos_encoding = tf.convert_to_tensor(pos_encoding, dtype=tf.float32)
+        x = x + pos_encoding
+        x = Dropout(0.1)(x)
+        
+        # Transformer encoder blocks
+        for _ in range(n_layers):
+            # Multi-head attention
+            attn_output = MultiHeadAttention(
+                num_heads=n_heads, 
+                key_dim=d_model // n_heads
+            )(x, x)
+            attn_output = Dropout(0.1)(attn_output)
+            
+            # Skip connection and norm
+            x = Add()([x, attn_output])
+            x = LayerNormalization(epsilon=1e-6)(x)
+            
+            # Feed-forward
+            ff_output = Dense(d_model * 2, activation='relu')(x)
+            ff_output = Dense(d_model)(ff_output)
+            ff_output = Dropout(0.1)(ff_output)
+            
+            # Skip connection and norm
+            x = Add()([x, ff_output])
+            x = LayerNormalization(epsilon=1e-6)(x)
+        
+        # Decoder - use last timestep for prediction
+        x = x[:, -1, :]  # Take last timestep
+        
+        # Project to forecast
+        x = Dense(d_model, activation='relu')(x)
+        x = Dense(d_model, activation='relu')(x)
+        
+        # Repeat for forecast length
+        x = RepeatVector(forecast_len)(x)
+        
+        # Dense output projection
+        outputs = TimeDistributed(Dense(n_features))(x)
+        
+        # Create model
+        model = Model(inputs=inputs, outputs=outputs)
+        
+        # Compile
+        model.compile(
+            optimizer=Adam(learning_rate=0.001),
+            loss='huber',
+            metrics=['mae']
+        )
+        
+        return model
+        
+    except ImportError:
+        return None
+
+
+def predict_with_transformer(df: pd.DataFrame, seq_len: int = 60, 
+                            forecast_len: int = 5, epochs: int = 50,
+                            n_heads: int = 4, n_layers: int = 2,
+                            d_model: int = 64) -> dict:
+    """
+    Multi-step forecasting using Transformer model
+    Predicts next 1, 3, and 5 days prices
+    
+    Args:
+        df: DataFrame with price data
+        seq_len: Sequence length for input
+        forecast_len: Days to forecast (5 by default = 1/3/5 days)
+        epochs: Training epochs
+        n_heads: Number of attention heads
+        n_layers: Number of transformer layers
+        d_model: Embedding dimension
+    
+    Returns:
+        Dict with predictions for 1, 3, 5 days
+    """
+    try:
+        from sklearn.preprocessing import MinMaxScaler
+        from tensorflow.keras.callbacks import EarlyStopping
+        
+        min_required = seq_len + forecast_len + 50
+        if len(df) < min_required:
+            return {'error': f'Insufficient data. Need {min_required} rows, got {len(df)}'}
+        
+        # Use Close price
+        data = df['Close'].values.reshape(-1, 1)
+        
+        # Scale
+        scaler = MinMaxScaler(feature_range=(0, 1))
+        scaled_data = scaler.fit_transform(data)
+        
+        # Create sequences
+        X, y = [], []
+        for i in range(seq_len, len(scaled_data) - forecast_len):
+            X.append(scaled_data[i - seq_len:i])
+            y.append(scaled_data[i:i + forecast_len])
+        
+        X = np.array(X)
+        y = np.array(y)
+        
+        # Train/test split (80/20)
+        split_idx = int(len(X) * 0.8)
+        X_train, X_test = X[:split_idx], X[split_idx:]
+        y_train, y_test = y[:split_idx], y[split_idx:]
+        
+        # Build model
+        model = build_transformer_model(
+            seq_len=seq_len,
+            forecast_len=forecast_len,
+            n_features=1,
+            n_heads=n_heads,
+            n_layers=n_layers,
+            d_model=d_model
+        )
+        
+        if model is None:
+            return {'error': 'TensorFlow not installed'}
+        
+        # Train
+        early_stop = EarlyStopping(
+            monitor='val_loss',
+            patience=10,
+            restore_best_weights=True
+        )
+        
+        history = model.fit(
+            X_train, y_train,
+            epochs=epochs,
+            batch_size=32,
+            validation_split=0.1,
+            callbacks=[early_stop],
+            verbose=0
+        )
+        
+        # Predict on test set for evaluation
+        y_pred_test = model.predict(X_test, verbose=0)
+        mae_test = np.mean(np.abs(y_pred_test - y_test))
+        
+        # Get last 5-day window for future prediction
+        last_sequence = scaled_data[-seq_len:].reshape(1, seq_len, 1)
+        
+        # Predict
+        predicted_scaled = model.predict(last_sequence, verbose=0)[0]
+        
+        # Inverse transform
+        dummy = np.repeat(data[-1], forecast_len).reshape(-1, 1)
+        dummy[:, 0] = predicted_scaled[:, 0]
+        predicted_prices = scaler.inverse_transform(dummy)[:, 0]
+        
+        current_price = df['Close'].iloc[-1]
+        
+        # Extract 1-day, 3-day, 5-day predictions
+        pred_1day = predicted_prices[0] if len(predicted_prices) > 0 else current_price
+        pred_3day = predicted_prices[2] if len(predicted_prices) > 2 else (predicted_prices[-1] if len(predicted_prices) > 0 else current_price)
+        pred_5day = predicted_prices[-1]
+        
+        # Calculate returns
+        ret_1day = (pred_1day - current_price) / current_price * 100
+        ret_3day = (pred_3day - current_price) / current_price * 100
+        ret_5day = (pred_5day - current_price) / current_price * 100
+        
+        # Determine trend
+        final_trend = 'Bullish' if ret_5day > 2 else ('Strong Bullish' if ret_5day > 3 else 
+                     ('Bearish' if ret_5day < -2 else ('Strong Bearish' if ret_5day < -3 else 'Neutral')))
+        
+        return {
+            'model_type': 'Transformer',
+            'current_price': float(current_price),
+            'predictions': {
+                '1_day': {
+                    'price': float(pred_1day),
+                    'change_pct': float(ret_1day)
+                },
+                '3_day': {
+                    'price': float(pred_3day),
+                    'change_pct': float(ret_3day)
+                },
+                '5_day': {
+                    'price': float(pred_5day),
+                    'change_pct': float(ret_5day)
+                }
+            },
+            'all_daily_predictions': predicted_prices.tolist(),
+            'overall_trend': final_trend,
+            'mae_test': float(mae_test),
+            'n_test_samples': len(X_test),
+            'model_config': {
+                'seq_len': seq_len,
+                'forecast_len': forecast_len,
+                'n_heads': n_heads,
+                'n_layers': n_layers,
+                'd_model': d_model
+            },
+            'epochs_trained': len(history.history['loss'])
+        }
+        
+    except Exception as e:
+        return {'error': str(e)}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# AUTOENCODER FOR ANOMALY DETECTION
+# ══════════════════════════════════════════════════════════════════════
+
+def build_autoencoder(input_dim: int = 10, encoding_dim: int = 6):
+    """
+    Build an autoencoder for anomaly detection
+    
+    Args:
+        input_dim: Input dimension (number of features)
+        encoding_dim: Bottleneck dimension
+    
+    Returns:
+        Tuple of (encoder, autoencoder) models
+    """
+    try:
+        from tensorflow.keras.models import Model
+        from tensorflow.keras.layers import Input, Dense, Dropout
+        from tensorflow.keras.optimizers import Adam
+        
+        # Encoder
+        input_layer = Input(shape=(input_dim,))
+        encoded = Dense(encoding_dim * 2, activation='relu')(input_layer)
+        encoded = Dropout(0.2)(encoded)
+        encoded = Dense(encoding_dim, activation='relu')(encoded)
+        
+        encoder = Model(input_layer, encoded, name='encoder')
+        
+        # Decoder
+        decoded = Dense(encoding_dim * 2, activation='relu')(encoded)
+        decoded = Dropout(0.2)(decoded)
+        decoded = Dense(input_dim, activation='sigmoid')(decoded)
+        
+        # Autoencoder
+        autoencoder = Model(input_layer, decoded, name='autoencoder')
+        autoencoder.compile(
+            optimizer=Adam(learning_rate=0.001),
+            loss='mse'
+        )
+        
+        return encoder, autoencoder
+        
+    except ImportError:
+        return None, None
+
+
+def detect_anomalies_autoencoder(df: pd.DataFrame, features: list = None,
+                                 contamination: float = 0.05,
+                                 epochs: int = 50) -> dict:
+    """
+    Detect anomalous volume/price spikes using autoencoder
+    
+    Args:
+        df: DataFrame with price and volume data
+        features: Feature columns to use (volume, price changes, volatility, etc.)
+        contamination: Expected proportion of anomalies (default 5%)
+        epochs: Training epochs
+    
+    Returns:
+        Dict with anomaly scores and detected anomalies
+    """
+    try:
+        from sklearn.preprocessing import StandardScaler
+        
+        if features is None:
+            # Default: price momentum, volume ratio, volatility
+            features = ['Volume', 'Close']
+            
+            # Add calculated features
+            df['price_change_pct'] = df['Close'].pct_change() * 100
+            df['volume_change_pct'] = df['Volume'].pct_change() * 100
+            df['volatility'] = df['Close'].rolling(5).std()
+            df['volume_sma_ratio'] = df['Volume'] / df['Volume'].rolling(20).mean()
+            
+            features = ['Close', 'Volume', 'price_change_pct', 'volume_change_pct', 
+                       'volatility', 'volume_sma_ratio']
+        
+        # Prepare data
+        data = df[features].copy().dropna()
+        
+        if len(data) < 50:
+            return {'error': 'Insufficient data for anomaly detection'}
+        
+        # Scale
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(data)
+        
+        # Build autoencoder
+        encoder, autoencoder = build_autoencoder(
+            input_dim=X_scaled.shape[1],
+            encoding_dim=max(3, X_scaled.shape[1] // 2)
+        )
+        
+        if autoencoder is None:
+            return {'error': 'TensorFlow not installed'}
+        
+        # Train on normal data (first 80%)
+        train_size = int(len(X_scaled) * 0.8)
+        X_train = X_scaled[:train_size]
+        X_normal = X_scaled  # Use all for baseline reconstruction
+        
+        autoencoder.fit(
+            X_train, X_train,
+            epochs=epochs,
+            batch_size=32,
+            validation_split=0.1,
+            verbose=0,
+            shuffle=True
+        )
+        
+        # Compute reconstruction error
+        X_pred = autoencoder.predict(X_normal, verbose=0)
+        reconstruction_error = np.mean(np.square(X_normal - X_pred), axis=1)
+        
+        # Determine threshold using IQR method
+        Q1 = np.percentile(reconstruction_error, 25)
+        Q3 = np.percentile(reconstruction_error, 75)
+        IQR = Q3 - Q1
+        threshold = Q3 + 1.5 * IQR
+        
+        # Also use percentile method
+        percentile_threshold = np.percentile(reconstruction_error, 100 * (1 - contamination))
+        final_threshold = max(threshold, percentile_threshold)
+        
+        # Detect anomalies
+        anomalies = reconstruction_error > final_threshold
+        anomaly_indices = np.where(anomalies)[0]
+        
+        # Get data indices (accounting for dropna)
+        data_indices = data.index.tolist()
+        
+        # Detected anomaly details
+        detected_anomalies = []
+        for idx in anomaly_indices:
+            if idx < len(data_indices):
+                date_idx = data_indices[idx]
+                detected_anomalies.append({
+                    'date': str(date_idx) if hasattr(date_idx, '__str__') else date_idx,
+                    'reconstruction_error': float(reconstruction_error[idx]),
+                    'values': {feat: float(data.iloc[idx][feat]) for feat in features}
+                })
+        
+        # Sort by reconstruction error (highest first)
+        detected_anomalies.sort(key=lambda x: x['reconstruction_error'], reverse=True)
+        
+        return {
+            'total_samples': len(X_normal),
+            'anomalies_detected': int(np.sum(anomalies)),
+            'anomaly_ratio': float(np.sum(anomalies) / len(X_normal)),
+            'threshold': float(final_threshold),
+            'reconstruction_error': {
+                'mean': float(np.mean(reconstruction_error)),
+                'std': float(np.std(reconstruction_error)),
+                'max': float(np.max(reconstruction_error)),
+                'min': float(np.min(reconstruction_error))
+            },
+            'detected_anomalies': detected_anomalies[:20],  # Top 20 anomalies
+            'features_used': features,
+            'model_config': {
+                'encoding_dim': max(3, X_scaled.shape[1] // 2),
+                'epochs': epochs,
+                'contamination': contamination
+            }
+        }
+        
+    except Exception as e:
+        return {'error': str(e)}
 

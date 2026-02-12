@@ -126,11 +126,15 @@ def generate_buy_sell_explanation(stock: pd.DataFrame, fundamentals: dict = None
     else:
         neutral_signals.append(f"➖ RSI14 at {rsi14:.0f}")
     
-    # Volume
+    # Volume - high volume confirms the prevailing direction, not always bullish
+    daily_return = (current_price - latest.get('Open', current_price)) / latest.get('Open', current_price) if latest.get('Open', 0) > 0 else 0
     if volume_ratio > 1.2:
-        bullish_signals.append(f"✅ Volume high ({volume_ratio:.2f}x average) - strong conviction")
+        if daily_return >= 0:
+            bullish_signals.append(f"✅ Volume high ({volume_ratio:.2f}x average) on up move - strong buying")
+        else:
+            bearish_signals.append(f"❌ Volume high ({volume_ratio:.2f}x average) on down move - strong selling")
     elif volume_ratio < 0.8:
-        bearish_signals.append(f"❌ Volume low ({volume_ratio:.2f}x average) - weak move")
+        neutral_signals.append(f"➖ Volume low ({volume_ratio:.2f}x average) - weak conviction")
     
     # Fundamental Signals
     if fundamentals:
