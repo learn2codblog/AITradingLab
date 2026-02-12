@@ -1,0 +1,63 @@
+╔═══════════════════════════════════════════════════════════════╗
+║                                                               ║
+║          🚀 AI TRADING LAB PRO+ v2.0 - QUICK START           ║
+║                                                               ║
+╚═══════════════════════════════════════════════════════════════╝
+
+⚠️  IMPORTANT: Use the NEW Modern UI App!
+
+❌ OLD (Don't use):
+   streamlit run app.py
+
+✅ NEW (Use this):
+   streamlit run app_modern.py
+
+───────────────────────────────────────────────────────────────
+
+📝 QUICK START COMMANDS:
+
+Method 1: Double-click (Easiest)
+   └─ START_APP.bat
+
+Method 2: Command Line
+   └─ streamlit run app_modern.py
+
+Method 3: Python Launcher
+   └─ python start.py
+
+───────────────────────────────────────────────────────────────
+
+🎨 WHAT'S NEW IN APP_MODERN.PY:
+
+✨ Modern purple gradient theme
+📊 Interactive Plotly charts
+🔄 5-page navigation (Home, Analysis, Screener, Portfolio, Settings)
+💳 Card-based layout
+🎯 Sector screening (500+ stocks)
+📈 Real-time progress tracking
+💾 CSV export functionality
+
+───────────────────────────────────────────────────────────────
+
+🌐 ACCESS:
+   http://localhost:8501
+
+📚 DOCUMENTATION:
+   - QUICK_SETUP.md (5-minute guide)
+   - documentation/README.md (full guide)
+   - COMPLETION_SUMMARY.md (overview)
+
+───────────────────────────────────────────────────────────────
+
+⚡ CURRENTLY RUNNING:
+   The new app_modern.py should now be starting in your browser!
+
+   If it doesn't open automatically, go to:
+   http://localhost:8501
+
+───────────────────────────────────────────────────────────────
+
+💡 TIP: Stop the old app (Ctrl+C in terminal) if it's still running
+
+═══════════════════════════════════════════════════════════════
+

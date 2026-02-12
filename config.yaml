@@ -1,0 +1,111 @@
+# ═══════════════════════════════════════════════════════════════
+# TradeGenius AI Configuration
+# ═══════════════════════════════════════════════════════════════
+
+# Market Parameters
+market:
+  risk_free_rate: 0.05          # Annual risk-free rate (5% for India)
+  trading_days_per_year: 252    # Trading periods per year
+  default_period: "3y"          # Default data period for analysis
+  min_data_points: 100          # Minimum data points for ML analysis
+  min_data_points_basic: 30     # Minimum data points for basic analysis
+
+# Technical Indicators
+indicators:
+  rsi_period: 14
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  bollinger_period: 20
+  bollinger_std: 2
+  atr_period: 14
+  stochastic_period: 14
+  adx_period: 14
+  cci_period: 20
+  roc_period: 10
+  mfi_period: 14
+
+# SuperTrend Defaults
+supertrend:
+  period: 10
+  multiplier: 2.0
+
+# ML Model Parameters
+ml:
+  random_forest:
+    n_estimators: 100
+    max_depth: 10
+    min_samples_split: 5
+    min_samples_leaf: 2
+  xgboost:
+    n_estimators: 100
+    max_depth: 6
+    learning_rate: 0.1
+  ensemble:
+    test_size: 0.2
+    quick_test_size: 0.1
+    deep_test_size: 0.3
+  lstm:
+    lookback: 60
+    forecast_days: 5
+    epochs: 50
+    batch_size: 32
+    mc_samples: 30
+    model_size: "small"
+
+# Signal Thresholds
+signals:
+  rsi_overbought: 70
+  rsi_oversold: 30
+  rsi_bullish_momentum: 50
+  adx_strong_trend: 25
+  volume_high_ratio: 1.5
+  volume_low_ratio: 0.8
+  confidence_max: 0.90
+  signal_conflict_threshold: 0.6   # Above this, force HOLD
+
+# Price Targets
+price_targets:
+  bullish_pullback_min: 0.02       # 2% minimum pullback for entry
+  bullish_pullback_max: 0.05       # 5% maximum pullback
+  bearish_pullback_min: 0.03       # 3% minimum for bearish entry
+  bearish_pullback_max: 0.08       # 8% maximum
+  stop_loss_buffer: 0.03           # 3% below support
+
+# Portfolio Optimization
+portfolio:
+  max_weight: 0.30                 # Maximum weight per stock
+  min_weight: 0.02                 # Minimum weight per stock
+  optimizer_timeout: 30            # Timeout in seconds for optimizer
+  risk_free_rate: 0.05
+
+# Scoring Weights (by analysis depth)
+scoring:
+  quick:
+    technical: 0.40
+    regime: 0.25
+    ml: 0.15
+    pattern: 0.20
+  standard:
+    technical: 0.30
+    regime: 0.25
+    ml: 0.25
+    pattern: 0.20
+  deep:
+    technical: 0.20
+    regime: 0.20
+    ml: 0.35
+    pattern: 0.25
+
+# Logging
+logging:
+  level: "INFO"                    # DEBUG, INFO, WARNING, ERROR
+  file: "tradegenius.log"
+  max_bytes: 5242880               # 5MB
+  backup_count: 3
+
+# UI Settings
+ui:
+  cache_ttl: 3600                  # Cache TTL in seconds (1 hour)
+  max_stocks_per_scan: 500
+  default_prediction_days: 5
