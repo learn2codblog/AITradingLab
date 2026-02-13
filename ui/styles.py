@@ -28,7 +28,7 @@ def get_custom_css():
         .stButton > button {
             width: 100%;
             background: rgba(255, 255, 255, 0.15);
-            color: white;
+            color: #111;
             border: none;
             font-weight: 600;
             padding: 0.75rem 1rem;

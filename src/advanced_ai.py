@@ -1016,10 +1016,12 @@ def predict_with_lstm(df: pd.DataFrame, lookback: int = 60, forecast_days: int =
         feature_data, feature_names, close_idx = prepare_lstm_features(df, features)
         n_features = len(feature_names)
 
-        # Handle NaN values
+        # Handle NaN and infinite values
+        feature_data = feature_data.copy()
+        feature_data.replace([np.inf, -np.inf], np.nan, inplace=True)
         feature_data = feature_data.dropna()
         if len(feature_data) < min_required:
-            return {'error': 'Too many NaN values after feature preparation'}
+            return {'error': 'Too many NaN or infinite values after feature preparation'}
 
         # Determine train/val/test split indices BEFORE scaling to prevent data leakage
         raw_data = feature_data.values
@@ -1038,6 +1040,9 @@ def predict_with_lstm(df: pd.DataFrame, lookback: int = 60, forecast_days: int =
 
         # Fit scaler ONLY on training portion of raw data (no data leakage)
         scaler = MinMaxScaler(feature_range=(0, 1))
+        # Ensure training portion has finite values
+        if not np.isfinite(raw_data[:train_end_raw]).all():
+            return {'error': 'Training data contains non-finite values (inf or NaN). Please clean the input data.'}
         scaler.fit(raw_data[:train_end_raw])
         scaled_data = scaler.transform(raw_data)
 
@@ -1247,14 +1252,26 @@ def calculate_feature_importance(df: pd.DataFrame, target_col: str = 'Target') -
     if len(feature_cols) < 3:
         return {'error': 'Not enough numeric features for analysis'}
 
-    # Drop NaN
-    df_clean = df_analysis[feature_cols + [target_col]].dropna()
+    # Drop NaN and replace infinities
+    df_clean = df_analysis[feature_cols + [target_col]].copy()
+    df_clean.replace([np.inf, -np.inf], np.nan, inplace=True)
+    df_clean = df_clean.dropna()
 
     if len(df_clean) < 100:
         return {'error': 'Insufficient data after removing NaN values'}
 
     X = df_clean[feature_cols].values
     y = df_clean[target_col].values
+
+    # Validate numeric input: ensure no infinities or NaNs remain
+    if not np.isfinite(X).all():
+        # Remove rows with invalid numeric values
+        finite_mask = np.isfinite(X).all(axis=1)
+        X = X[finite_mask]
+        y = y[finite_mask]
+
+    if X.size == 0 or y.size == 0:
+        return {'error': 'No valid numeric data after removing invalid values'}
 
     # Scale features
     scaler = StandardScaler()
@@ -2316,6 +2333,15 @@ def create_ensemble_prediction(df: pd.DataFrame, quick_mode: bool = False, deep_
 
     X = df_clean[available_features].values
     y = df_clean['Target'].values
+
+    # Replace infinities and validate numeric input
+    if not np.isfinite(X).all():
+        finite_mask = np.isfinite(X).all(axis=1)
+        X = X[finite_mask]
+        y = y[finite_mask]
+
+    if X.size == 0 or y.size == 0:
+        return {'error': 'No valid numeric data for training after cleaning'}
 
     # Scale features
     scaler = StandardScaler()

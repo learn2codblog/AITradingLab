@@ -68,6 +68,42 @@ except Exception:
     # experimental_get_query_params may not be available in some runtimes
     pass
 
+# Handle Zerodha OAuth callback (request_token) if present in URL
+try:
+    params = st.experimental_get_query_params()
+    if params and 'request_token' in params:
+        req_token = params.get('request_token')[0]
+        # If an authenticator was stored in session state, complete the flow automatically
+        if 'zerodha_authenticator' in st.session_state:
+            try:
+                auth = st.session_state.zerodha_authenticator
+                from src.zerodha_integration import ZerodhaAuthenticator
+                result = auth.set_access_token(req_token)
+                if 'error' not in result and result.get('success'):
+                    st.session_state.zerodha_connected = True
+                    st.session_state.zerodha_user_id = result.get('user_id')
+                    st.session_state.zerodha_access_token = result.get('access_token')
+                    st.success(f"✅ Zerodha connected: {result.get('user_id')}")
+                    try:
+                        st.experimental_set_query_params()
+                    except Exception:
+                        pass
+                    import time
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.error(f"Zerodha authorization failed: {result.get('error', 'unknown')}")
+            except Exception as e:
+                st.error(f"Error completing Zerodha auth: {e}")
+        else:
+            st.info("Zerodha request_token found in URL. Please open Account Settings and complete authorization by clicking 'Complete Authorization' or paste the token into the form.")
+            try:
+                st.experimental_set_query_params()
+            except Exception:
+                pass
+except Exception:
+    pass
+
 # Initialize authentication
 auth_manager = AuthManager()
 auth_manager.initialize_session_state()
@@ -263,6 +299,34 @@ st.set_page_config(
 # Apply custom CSS
 st.markdown(get_custom_css(), unsafe_allow_html=True)
 
+# Initialize dark mode flag if missing
+if 'dark_mode_toggle' not in st.session_state:
+    st.session_state['dark_mode_toggle'] = False
+
+# Inject theme-specific body text color based on dark mode setting
+if st.session_state.get('dark_mode_toggle'):
+    st.markdown("""
+    <style>
+        /* Dark mode: make body text light */
+        body, .stApp, .main, .block-container, p, span, label, div, a, .stMarkdown, .stText, .stTextInput, .stButton > button {
+            color: #FFFFFF !important;
+        }
+        a { color: #9ad1ff !important; }
+        table, thead, tbody, tr, th, td { color: #e6e6e6 !important; }
+    </style>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <style>
+        /* Light mode: make body text dark */
+        body, .stApp, .main, .block-container, p, span, label, div, a, .stMarkdown, .stText, .stTextInput, .stButton > button {
+            color: #111111 !important;
+        }
+        a { color: #1a73e8 !important; }
+        table, thead, tbody, tr, th, td { color: #111111 !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
 # Add Mobile Responsive CSS
 mobile_responsive_css = """
 <style>
@@ -383,6 +447,7 @@ st.markdown("""
         height: 300px;
         background: radial-gradient(circle, rgba(245, 87, 108, 0.2) 0%, transparent 70%);
         border-radius: 50%;
+        pointer-events: none;
     }
     
     .header-box::after {
@@ -394,6 +459,19 @@ st.markdown("""
         height: 250px;
         background: radial-gradient(circle, rgba(240, 147, 251, 0.15) 0%, transparent 70%);
         border-radius: 50%;
+        pointer-events: none;
+    }
+
+    /* Ensure header elements are on top and clickable */
+    .header-box {
+        position: relative;
+        z-index: 10001;
+        pointer-events: auto;
+    }
+
+    .user-info {
+        pointer-events: auto;
+        z-index: 10002;
     }
     
     .app-title {
@@ -494,17 +572,21 @@ with col3:
         # User profile menu
         user_menu = st.selectbox(
             "👤 Menu",
-            ["Profile", "Security", "Settings", "Logout"],
-            key="user_menu",
+            ["Menu", "Profile", "Security", "Settings", "Logout"],
+            key="user_menu_select",
             label_visibility="collapsed"
         )
-        
+
+        # Only act when the user chooses an action (not the placeholder)
         if user_menu == "Profile":
             st.session_state.active_page = "👤 My Profile"
+            st.rerun()
         elif user_menu == "Security":
             st.session_state.active_page = "🔐 Security Settings"
+            st.rerun()
         elif user_menu == "Settings":
             st.session_state.active_page = "⚙️ Account Settings"
+            st.rerun()
         elif user_menu == "Logout":
             auth_manager.logout()
             st.success("✅ Logged out successfully!")
@@ -530,6 +612,8 @@ st.markdown("""
         flex-wrap: wrap;
         justify-content: center;
         border: 1px solid rgba(255, 255, 255, 0.2);
+        position: relative;
+        z-index: 9999;
     }
     
     .nav-btn {
@@ -545,6 +629,7 @@ st.markdown("""
         cursor: pointer;
         position: relative;
         overflow: hidden;
+        pointer-events: auto !important;
     }
     
     .nav-btn:hover {
@@ -625,6 +710,18 @@ settings_btn = button_results["nav_settings"]
 logout_btn = button_results["nav_logout"]
 
 st.markdown('</div>', unsafe_allow_html=True)
+
+# Debug: record which nav button was pressed last (helps diagnose click issues)
+if 'last_nav_debug' not in st.session_state:
+    st.session_state['last_nav_debug'] = None
+
+for k, pressed in button_results.items():
+    if pressed:
+        st.session_state['last_nav_debug'] = k
+
+# Optionally display debug info (set this to True while troubleshooting)
+if True or st.session_state.get('show_nav_debug', False):
+    st.info(f"Last nav pressed: {st.session_state.get('last_nav_debug')}")
 
 # Determine active page
 if 'active_page' not in st.session_state:
@@ -2612,6 +2709,17 @@ elif page == "🤖 AI Deep Analysis":
                                 </p>
                             </div>
                             """, unsafe_allow_html=True)
+                            # Show summary and read-more link below the card
+                            summary = item.get('summary', '')
+                            if summary:
+                                # Limit summary length visually while allowing full text via link
+                                short = (summary[:280] + '...') if len(summary) > 300 else summary
+                                st.markdown(f"""
+                                <div style='margin-top: -6px; margin-bottom: 6px;'>
+                                    <p style='color: #4a5568; font-size: 0.95rem; margin: 6px 0 4px 0;'>{short}</p>
+                                    <p style='margin:0'><a href="{item['link']}" target="_blank">Read full article →</a></p>
+                                </div>
+                                """, unsafe_allow_html=True)
                 else:
                     st.info("📰 No recent news available for this stock.")
 
@@ -4183,18 +4291,26 @@ elif page == "⚙️ Account Settings":
         
         if zerodha_connected and zerodha_user_id:
             st.success(f"✅ Connected to Zerodha (User ID: {zerodha_user_id})")
-            
+
             col1, col2 = st.columns(2)
-            
+
             with col1:
                 if st.button("📊 View Live Portfolio", use_container_width=True, key="zerodha_portfolio"):
-                    st.info("📊 Live portfolio would load here with real-time positions and P&L")
-            
+                    st.session_state.active_page = "📊 Zerodha Portfolio"
+                    st.rerun()
+                if st.button("🔬 Analyze in Zerodha", use_container_width=True, key="zerodha_analyze"):
+                    st.session_state.active_page = "🔬 Zerodha Analyze"
+                    st.rerun()
+
             with col2:
+                if st.button("🔁 Place Order (Zerodha)", use_container_width=True, key="zerodha_trade"):
+                    st.session_state.active_page = "🔁 Zerodha Trade"
+                    st.rerun()
                 if st.button("🔗 Disconnect Zerodha", use_container_width=True, key="zerodha_disconnect"):
                     st.session_state.zerodha_connected = False
                     st.session_state.zerodha_user_id = None
                     st.session_state.zerodha_access_token = None
+                    st.session_state.zerodha_authenticator = None
                     st.success("✅ Disconnected from Zerodha")
                     st.rerun()
         
@@ -4377,6 +4493,64 @@ elif page == "⚙️ Account Settings":
 
 # SETTINGS PAGE
 # ══════════════════════════════════════════════════════════════════════
+# ZERODHA PAGES
+
+elif page == "📊 Zerodha Portfolio":
+    create_section_header("Zerodha — Live Portfolio", "View your live holdings and positions from Zerodha", "📊")
+    if st.session_state.get('zerodha_connected') and st.session_state.get('zerodha_authenticator'):
+        try:
+            from src.zerodha_integration import ZerodhaKite
+            zk = ZerodhaKite(st.session_state.zerodha_authenticator)
+            holdings = zk.get_holdings()
+            positions = zk.get_positions()
+            st.markdown("### Holdings")
+            if holdings:
+                st.dataframe(holdings)
+            else:
+                st.info("No holdings available or KiteConnect not configured.")
+            st.markdown("### Positions")
+            if positions:
+                st.dataframe(positions)
+            else:
+                st.info("No positions available or KiteConnect not configured.")
+        except Exception as e:
+            st.error(f"Error loading Zerodha data: {e}")
+    else:
+        st.info("Zerodha is not connected. Go to Account Settings → Zerodha Integration to connect.")
+
+elif page == "🔬 Zerodha Analyze":
+    create_section_header("Zerodha — Analysis", "Quick analysis using Zerodha portfolio data", "🔬")
+    if st.session_state.get('zerodha_connected') and st.session_state.get('zerodha_authenticator'):
+        st.markdown("This page can host strategy-specific analysis using live prices and positions.")
+        st.info("Implement custom analysis functions using `src.zerodha_integration.ZerodhaKite`.")
+    else:
+        st.info("Zerodha is not connected. Go to Account Settings → Zerodha Integration to connect.")
+
+elif page == "🔁 Zerodha Trade":
+    create_section_header("Zerodha — Trade", "Place orders directly via Zerodha", "🔁")
+    if st.session_state.get('zerodha_connected') and st.session_state.get('zerodha_authenticator'):
+        try:
+            from src.zerodha_integration import ZerodhaKite
+            zk = ZerodhaKite(st.session_state.zerodha_authenticator)
+            with st.form('zerodha_place_order'):
+                symbol = st.text_input('Symbol (e.g., INFY)', value='')
+                exchange = st.selectbox('Exchange', ['NSE', 'BSE'], index=0)
+                tx = st.selectbox('Transaction', ['BUY', 'SELL'], index=0)
+                qty = st.number_input('Quantity', min_value=1, value=1)
+                order_type = st.selectbox('Order Type', ['MARKET', 'LIMIT'], index=0)
+                price = None
+                if order_type == 'LIMIT':
+                    price = st.number_input('Limit Price', min_value=0.0, format='%f')
+                if st.form_submit_button('Place Order'):
+                    res = zk.place_order(symbol=symbol, exchange=exchange, transaction_type=tx, quantity=int(qty), order_type=order_type, price=price)
+                    if res.get('error'):
+                        st.error(f"Order error: {res.get('error')}")
+                    else:
+                        st.success(f"Order placed: {res}")
+        except Exception as e:
+            st.error(f"Trading not available: {e}")
+    else:
+        st.info("Zerodha is not connected. Go to Account Settings → Zerodha Integration to connect.")
 
 elif page == "⚙️ Settings":
     create_section_header("Settings", "Configure Your Trading Parameters", "⚙️")
