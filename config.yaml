@@ -2,7 +2,45 @@
 # TradeGenius AI Configuration
 # ═══════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════
+# DATABASE & PERSISTENCE (Supabase)
+# ═══════════════════════════════════════════════════════════════
+database:
+  provider: "supabase"  # Database backend: supabase or local
+  enable_persistence: true
+  auto_backups: true
+  
+  # Fallback to local JSON if Supabase unavailable
+  fallback_to_local: true
+  local_db_dir: "./data"
+  
+  # Data retention policies
+  retention:
+    activity_logs_days: 90     # Keep activity logs for 90 days
+    backtest_results_days: 180 # Keep backtest results for 6 months
+    
+# ═══════════════════════════════════════════════════════════════
+# AUTHENTICATION
+# ═══════════════════════════════════════════════════════════════
+authentication:
+  backend: "supabase"  # supabase or local
+  session_timeout: 86400  # 24 hours in seconds
+  password_min_length: 6
+  enable_oauth: true
+  
+  oauth_providers:
+    google: true
+    microsoft: true
+    yahoo: true
+  
+  # Kite Integration
+  kite:
+    enable_kite_connect: true
+    store_credentials: true  # Store in Supabase encrypted
+    auto_disconnect_on_error: true
+
 # Market Parameters
+
 market:
   risk_free_rate: 0.05          # Annual risk-free rate (5% for India)
   trading_days_per_year: 252    # Trading periods per year
@@ -109,3 +147,16 @@ ui:
   cache_ttl: 3600                  # Cache TTL in seconds (1 hour)
   max_stocks_per_scan: 500
   default_prediction_days: 5
+# ═══════════════════════════════════════════════════════════════
+# DATA IMPORT/EXPORT
+# ═══════════════════════════════════════════════════════════════
+data_management:
+  enable_export: true
+  export_formats: ["csv", "json", "xlsx"]
+  enable_import: true
+  import_formats: ["csv", "json"]
+  
+  # Automatic actions
+  auto_backup_frequency: "weekly"  # daily, weekly, monthly
+  backup_to_storage: true
+  storage_location: "gs://cloud-storage"  # or "s3://bucket"

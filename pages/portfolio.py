@@ -1,5 +1,6 @@
 """
 Portfolio Manager page module for AI Trading Lab PRO+
+Persistent portfolio storage with Supabase
 """
 import streamlit as st
 import pandas as pd
@@ -17,6 +18,14 @@ def render_portfolio_manager():
     """Render the Portfolio Manager page with full functionality."""
     theme_colors = get_theme_colors()
     
+    # Get current user from session
+    user_id = st.session_state.get('user_id')
+    user_email = st.session_state.get('user_email')
+    
+    if not user_id:
+        st.error("Please login to use Portfolio Manager")
+        return
+    
     st.markdown(f"""
     <div style='background: {theme_colors['gradient_bg']}; padding: 20px; border-radius: 12px; margin-bottom: 20px; text-align: center;'>
         <h1 style='color: white; margin: 0;'>💼 Portfolio Manager</h1>
@@ -26,11 +35,108 @@ def render_portfolio_manager():
     </div>
     """, unsafe_allow_html=True)
     
+    # Load saved portfolios from Supabase
+    from src.supabase_client import get_supabase_client
+    supabase = get_supabase_client()
+    
+    # Portfolio management section
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.markdown("### 💾 Your Saved Portfolios")
+    with col2:
+        if st.button("🔄 Refresh", use_container_width=True):
+            st.rerun()
+    
+    # Fetch saved portfolios
+    saved_portfolios = supabase.get_user_portfolios(user_id)
+    
+    if saved_portfolios:
+        # Display saved portfolios
+        portfolio_names = [p['portfolio_name'] for p in saved_portfolios]
+        selected_portfolio = st.selectbox(
+            "Select a saved portfolio to load",
+            portfolio_names,
+            key="portfolio_selector"
+        )
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            if st.button("📂 Load Portfolio", use_container_width=True):
+                portfolio = supabase.get_portfolio_by_name(user_id, selected_portfolio)
+                if portfolio:
+                    import json
+                    st.session_state.portfolio_items = json.loads(portfolio['config_data'])
+                    st.success(f"✅ Loaded: {selected_portfolio}")
+                    st.rerun()
+        
+        with col2:
+            if st.button("🗑️ Delete Portfolio", use_container_width=True):
+                if supabase.delete_portfolio(user_id, selected_portfolio):
+                    st.success(f"✅ Deleted: {selected_portfolio}")
+                    st.rerun()
+                else:
+                    st.error("Failed to delete portfolio")
+        
+        with col3:
+            if st.button("📥 Export JSON", use_container_width=True):
+                portfolio = supabase.get_portfolio_by_name(user_id, selected_portfolio)
+                if portfolio:
+                    import json
+                    portfolio_json = json.dumps(json.loads(portfolio['config_data']), indent=2)
+                    st.download_button(
+                        label="Download Portfolio",
+                        data=portfolio_json,
+                        file_name=f"{selected_portfolio}.json",
+                        mime="application/json",
+                        key="download_portfolio_json"
+                    )
+        
+        with col4:
+            if st.button("📋 Duplicate", use_container_width=True):
+                portfolio = supabase.get_portfolio_by_name(user_id, selected_portfolio)
+                if portfolio:
+                    import json
+                    st.session_state.portfolio_items = json.loads(portfolio['config_data'])
+                    st.session_state.new_portfolio_name = f"{selected_portfolio} (Copy)"
+                    st.success("Copied! Change name and save as new")
+                    st.rerun()
+    else:
+        st.info("📭 No saved portfolios yet. Create one below!")
+    
     # Portfolio builder tabs
     tabs = st.tabs(["📊 Quick Builder", "💎 Advanced Builder", "🎯 AI Recommendations", "📈 Performance"])
     
     with tabs[0]:
+        st.markdown("### 🏗️ Create or Edit Portfolio")
         portfolio_items = create_portfolio_builder()
+        
+        # Save portfolio section
+        st.markdown("---")
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            portfolio_name = st.text_input(
+                "Portfolio name (e.g., 'My Growth Portfolio')",
+                value=st.session_state.get('new_portfolio_name', ''),
+                key="portfolio_name_input"
+            )
+        with col2:
+            if st.button("💾 Save Portfolio", use_container_width=True, type="primary"):
+                if not portfolio_name.strip():
+                    st.error("Please enter a portfolio name")
+                elif not st.session_state.portfolio_items:
+                    st.error("Portfolio is empty. Add some stocks first!")
+                else:
+                    result = supabase.save_portfolio_config(
+                        user_id=user_id,
+                        portfolio_name=portfolio_name.strip(),
+                        config_data=st.session_state.portfolio_items
+                    )
+                    if result:
+                        st.success(f"✅ Portfolio saved: {portfolio_name}")
+                        st.session_state.new_portfolio_name = ""
+                        st.rerun()
+                    else:
+                        st.error("Failed to save portfolio")
     
     with tabs[1]:
         create_advanced_portfolio_builder()

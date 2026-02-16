@@ -1,3 +1,24 @@
+# Auto-initialize Supabase on Hugging Face first startup
+import os
+import subprocess
+
+if os.getenv('HUGGINGFACE_REPO_ID'):
+    """Auto-run SETUP.py on Hugging Face only once per deployment"""
+    setup_marker = '/tmp/.ai_trading_lab_setup_done'
+    if not os.path.exists(setup_marker):
+        try:
+            print("🚀 Initializing AI Trading Lab Supabase setup...", flush=True)
+            result = subprocess.run(['python', 'SETUP.py'], timeout=120, capture_output=True, text=True)
+            if result.returncode == 0:
+                print("✅ Supabase setup completed successfully!", flush=True)
+            else:
+                print(f"⚠️ Setup warning: {result.stderr}", flush=True)
+            # Create marker so we don't run again
+            with open(setup_marker, 'w') as f:
+                f.write('done')
+        except Exception as e:
+            print(f"⚠️ Setup note: {e}", flush=True)
+
 """
 AI Trading Lab PRO+
 Modern UI Application with Enhanced Features
@@ -39,7 +60,7 @@ except Exception as e:
 # AUTHENTICATION - CHECK LOGIN STATUS BEFORE ANYTHING ELSE
 # ══════════════════════════════════════════════════════════════════════
 
-from src.auth import AuthManager, create_login_page
+from src.auth_supabase import SupabaseAuthManager as AuthManager
 from ui.login_page import render_login_page
 
 # OAuth callback handling: exchange authorization code for tokens and create session
@@ -133,6 +154,12 @@ except Exception:
 # Initialize authentication
 auth_manager = AuthManager()
 auth_manager.initialize_session_state()
+
+# Verify Supabase connection
+if not auth_manager.supabase.is_connected():
+    st.error("Database connection failed. User data will not be saved.")
+    st.info("To enable persistent data storage, run: python SETUP.py")
+    st.stop()
 
 # Check if user is authenticated
 if not auth_manager.is_authenticated():
@@ -409,9 +436,9 @@ zerodha_connected = st.session_state.get('zerodha_connected', False)
 
 # Adjust columns based on Zerodha connection
 if zerodha_connected:
-    nav_cols = st.columns([1, 1, 1.2, 1, 0.9, 1, 1.5, 1, 1, 1, 1, 0.9])
+    nav_cols = st.columns([1, 1, 1.2, 1, 0.9, 1, 1.5, 1, 1, 1, 1, 0.9, 1])
 else:
-    nav_cols = st.columns([1, 1, 1.2, 1, 0.9, 1, 1.5, 1, 1, 1, 0.9])
+    nav_cols = st.columns([1, 1, 1.2, 1, 0.9, 1, 1.5, 1, 1, 1, 0.9, 1])
 
 btn_data = [
     (nav_cols[0], "🏠 Home", "nav_home"),
@@ -423,16 +450,17 @@ btn_data = [
     (nav_cols[6], "🧠 Deep Learning", "nav_deeplearning"),
     (nav_cols[7], "📈 Backtest", "nav_backtest"),
     (nav_cols[8], "💼 Portfolio", "nav_portfolio"),
+    (nav_cols[9], "💾 My Data", "nav_data"),
 ]
 
 # Add Live Trading button only if Zerodha is connected
 if zerodha_connected:
-    btn_data.append((nav_cols[9], "🔴 Live Trading", "nav_livetrading"))
+    btn_data.append((nav_cols[10], "🔴 Live Trading", "nav_livetrading"))
+    btn_data.append((nav_cols[11], "⚙️ Settings", "nav_settings"))
+    btn_data.append((nav_cols[12], "🚪 Logout", "nav_logout"))
+else:
     btn_data.append((nav_cols[10], "⚙️ Settings", "nav_settings"))
     btn_data.append((nav_cols[11], "🚪 Logout", "nav_logout"))
-else:
-    btn_data.append((nav_cols[9], "⚙️ Settings", "nav_settings"))
-    btn_data.append((nav_cols[10], "🚪 Logout", "nav_logout"))
 
 button_results = {}
 for col, label, key in btn_data:
@@ -448,6 +476,7 @@ advanced_btn = button_results["nav_advanced"]
 deeplearning_btn = button_results["nav_deeplearning"]
 backtest_btn = button_results["nav_backtest"]
 portfolio_btn = button_results["nav_portfolio"]
+data_btn = button_results["nav_data"]
 livetrading_btn = button_results.get("nav_livetrading", False)
 settings_btn = button_results["nav_settings"]
 logout_btn = button_results["nav_logout"]
@@ -463,7 +492,7 @@ for k, pressed in button_results.items():
         st.session_state['last_nav_debug'] = k
 
 # Optionally display debug info (set this to True while troubleshooting)
-if True or st.session_state.get('show_nav_debug', False):
+if st.session_state.get('show_nav_debug', False):
     st.info(f"Last nav pressed: {st.session_state.get('last_nav_debug')}")
 
 # Determine active page
@@ -496,6 +525,9 @@ elif backtest_btn:
     st.rerun()
 elif portfolio_btn:
     st.session_state.active_page = "💼 Portfolio Manager"
+    st.rerun()
+elif data_btn:
+    st.session_state.active_page = "💾 My Data"
     st.rerun()
 elif livetrading_btn:
     st.session_state.active_page = "🔴 Live Trading"
@@ -572,6 +604,7 @@ from pages.deep_learning import render_deep_learning
 from pages.backtest import render_strategy_backtest
 from pages.profile import render_my_profile
 from pages.security import render_security_settings
+from pages.data_management import render_data_management
 from pages.account import render_account_settings
 from pages.zerodha_portfolio import render_zerodha_portfolio
 from pages.zerodha_analyze import render_zerodha_analyze
@@ -593,6 +626,8 @@ elif page == "🔬 Advanced Indicators":
     render_advanced_indicators()
 elif page == "💼 Portfolio Manager":
     render_portfolio_manager()
+elif page == "💾 My Data":
+    render_data_management()
 elif page == "🧠 Deep Learning":
     render_deep_learning()
 elif page == "📈 Strategy Backtest":

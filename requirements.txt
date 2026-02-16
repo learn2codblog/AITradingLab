@@ -56,3 +56,10 @@ optuna>=3.0.0
 
 # NEW in v4.0.0: Enhanced UI Components
 # (All handled by Streamlit markdown & CSS - no extra deps needed)
+
+# Database & Data Persistence (NEW v4.1.0)
+supabase>=2.0.0
+python-dotenv>=1.0.0
+
+# Security & Encryption
+cryptography>=41.0.0

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Deep Learning page module for AI Trading Lab PRO+
 Provides advanced neural network models for price prediction with educational guidance
@@ -185,6 +186,18 @@ def render_deep_learning():
     # Training button with clear CTA
     st.markdown("---")
     if st.button("🚀 Train Model & Generate Predictions", use_container_width=True, type="primary"):
+        # Pre-flight checks
+        if not symbol or symbol.strip() == "":
+            st.error("❌ Please enter a stock symbol")
+            return
+        
+        if forecast_days < 1:
+            st.error("❌ Forecast days must be at least 1")
+            return
+        
+        if lookback < 30:
+            st.warning("⚠️ Lookback period is very short. Recommended: 60+ days for better accuracy")
+        
         # Determine features based on user selection
         features_to_use = ['Close']
         if use_volume:
@@ -196,6 +209,8 @@ def render_deep_learning():
         if use_momentum:
             features_to_use.extend(['ROC', 'Stoch_K'])
         
+        st.info(f"📊 Using {len(features_to_use)} features: {', '.join(features_to_use)}")
+        
         with st.spinner(f"🔄 Training {model_type} model... This may take 1-5 minutes depending on complexity."):
             try:
                 # Load data
@@ -203,12 +218,20 @@ def render_deep_learning():
                 end_date = datetime.now()
                 start_date = end_date - timedelta(days=lookback + 200)
                 
+                st.info(f"📥 Loading data for {symbol_norm} from {start_date.date()} to {end_date.date()}...")
                 df = load_stock_data(symbol_norm, start_date, end_date)
                 
-                if df is None or len(df) < lookback:
-                    st.error(f"❌ Unable to load sufficient data for {symbol}. Need at least {lookback} days of historical data.")
-                    st.info("💡 Try: Using a different stock symbol or reducing the lookback period")
+                if df is None:
+                    st.error(f"❌ Unable to load data for {symbol}. The symbol may be incorrect or data unavailable.")
+                    st.info("💡 **Try these symbols**: TCS, INFY, RELIANCE, HDFCBANK, ICICIBANK, SBIN")
                     return
+                
+                if len(df) < lookback:
+                    st.error(f"❌ Insufficient data for {symbol}. Got {len(df)} days, need at least {lookback} days.")
+                    st.info(f"💡 Try: Reduce lookback period to {len(df) - 50} days or use a different stock")
+                    return
+                
+                st.success(f"✅ Loaded {len(df)} days of data successfully!")
                 
                 # Import and run prediction
                 from src.advanced_ai import predict_with_lstm, calculate_advanced_indicators
@@ -216,6 +239,7 @@ def render_deep_learning():
                 # Calculate indicators for features
                 st.info("📊 Calculating technical indicators...")
                 df = calculate_advanced_indicators(df)
+                st.success(f"✅ Calculated indicators for {len(df)} data points")
                 
                 # Configure model parameters based on selection
                 if model_type == "LSTM (Fast)":
@@ -236,18 +260,48 @@ def render_deep_learning():
                 
                 st.info(f"🧠 {training_note}")
                 
-                # Train and predict
-                prediction = predict_with_lstm(
-                    df,
-                    lookback=lookback,
-                    forecast_days=forecast_days,
-                    epochs=epochs,
-                    features=features_to_use,
-                    model_size=model_size,
-                    n_mc_samples=30 if confidence else 1
-                )
+                # Train and predict with progress indicator
+                with st.spinner(f"⏳ Training {model_type} model with {epochs} epochs... This may take 1-3 minutes"):
+                    prediction = predict_with_lstm(
+                        df,
+                        lookback=lookback,
+                        forecast_days=forecast_days,
+                        epochs=epochs,
+                        features=features_to_use,
+                        model_size=model_size,
+                        n_mc_samples=30 if confidence else 1
+                    )
                 
-                if prediction and 'status' in prediction and prediction['status'] == 'success':
+                # Check if prediction was successful
+                if prediction is None:
+                    st.error("❌ Model training failed - no result returned.")
+                    st.info("""
+                    💡 **Troubleshooting Tips:**
+                    - Reduce the number of epochs (try 20-30)
+                    - Use fewer features (uncheck some options)
+                    - Try a simpler model (LSTM Fast or GRU)
+                    - Ensure the stock symbol is correct
+                    - Try a different stock with more historical data
+                    """)
+                    return
+                
+                # Check for errors in prediction result
+                if 'error' in prediction:
+                    st.error(f"❌ Model training failed: {prediction['error']}")
+                    st.info("""
+                    💡 **Troubleshooting Tips:**
+                    - Reduce the number of epochs (try 20-30)
+                    - Reduce lookback period (try 30-40 days)
+                    - Use fewer features (uncheck some options)
+                    - Try a simpler model (LSTM Fast or GRU)
+                    - Ensure the stock symbol is correct and has sufficient data
+                    - Try a different stock with more consistent historical data
+                    """)
+                    return
+                
+                if prediction.get('status') == 'success':
+                    st.success(f"✅ Model training completed successfully! Training time: {prediction.get('training_time', 'N/A')}")
+                    
                     # Display results
                     display_prediction_results(
                         prediction, 
@@ -259,7 +313,8 @@ def render_deep_learning():
                         features_to_use
                     )
                 else:
-                    st.error("❌ Model training failed. Please try adjusting parameters or using a different stock.")
+                    error_msg = prediction.get('error', 'Unknown error occurred')
+                    st.error(f"❌ Model training failed: {error_msg}")
                     st.info("""
                     💡 **Troubleshooting Tips:**
                     - Reduce the number of epochs (try 20-30)
@@ -272,29 +327,39 @@ def render_deep_learning():
                 st.error("❌ Deep learning libraries not installed!")
                 st.code("pip install tensorflow keras scikit-learn", language="bash")
                 st.info("💡 Install the required libraries and restart the application")
+                st.expander("🔍 Error Details").error(str(e))
             except Exception as e:
                 st.error(f"❌ Error during training: {str(e)}")
+                
+                # Show detailed error information
+                with st.expander("🔍 Detailed Error Information"):
+                    st.code(str(e))
+                    import traceback
+                    st.code(traceback.format_exc())
+                
                 st.info("""
                 💡 **Common Issues:**
-                - Stock data unavailable: Try a different symbol
-                - Insufficient data: Reduce lookback period
-                - Memory error: Use LSTM (Fast) model
-                - Training stuck: Reduce epochs to 20-30
+                - **Stock data unavailable**: Try a different symbol (e.g., TCS, INFY, RELIANCE)
+                - **Insufficient data**: Reduce lookback period to 30-40 days
+                - **Memory error**: Use LSTM (Fast) model with fewer epochs
+                - **Training stuck**: Reduce epochs to 20-30
+                - **Feature calculation failed**: Uncheck some feature options
+                - **NaN/Infinity values**: Try a different stock with cleaner data
                 """)
 
 
 def render_educational_intro(theme_colors: dict):
     """Render educational introduction about deep learning for stock prediction."""
     
-    with st.expander("📚 What is Deep Learning Price Prediction? (Click to learn)", expanded=True):
+    with st.expander("\U0001f4da What is Deep Learning Price Prediction? (Click to learn)", expanded=True):
         st.markdown("""
-        ### 🎯 What This Page Does
+        ### \U0001f3af What This Page Does
         
         This page uses **Artificial Intelligence (AI)** to predict future stock prices based on historical patterns. 
         Think of it as teaching a computer to recognize patterns in past price movements and use them to forecast 
         what might happen next.
         
-        ### 🔬 How It Works
+        ### \U0001f52c How It Works
         
         1. **Data Collection**: Gathers historical price, volume, and technical indicators
         2. **Pattern Learning**: The AI model studies patterns over the lookback period (e.g., 60 days)
@@ -302,14 +367,14 @@ def render_educational_intro(theme_colors: dict):
         4. **Prediction**: Uses learned patterns to forecast future prices
         5. **Confidence Intervals**: Shows uncertainty range around predictions
         
-        ### ✅ Benefits & Use Cases
+        ### \u2705 Benefits & Use Cases
         
         **When to Use Deep Learning Predictions:**
-        - 📈 **Short to Medium-term Trading**: Predict price movements for next 1-30 days
-        - 🎯 **Entry/Exit Planning**: Identify potential entry and exit points
-        - 📊 **Trend Confirmation**: Validate your analysis with AI insights
-        - 🔄 **Swing Trading**: Plan trades based on predicted price swings
-        - 📉 **Risk Assessment**: Understand potential price ranges with confidence intervals
+        - \U0001f4c8 **Short to Medium-term Trading**: Predict price movements for next 1-30 days
+        - \U0001f3af **Entry/Exit Planning**: Identify potential entry and exit points
+        - \U0001f4ca **Trend Confirmation**: Validate your analysis with AI insights
+        - \U0001f504 **Swing Trading**: Plan trades based on predicted price swings
+        - \U0001f4c9 **Risk Assessment**: Understand potential price ranges with confidence intervals
         
         **Real-World Applications:**
         - A swing trader uses 5-day predictions to plan weekly trades
@@ -317,35 +382,35 @@ def render_educational_intro(theme_colors: dict):
         - A day trader uses confidence intervals to set stop-loss levels
         - A portfolio manager combines AI predictions with fundamental analysis
         
-        ### ⚠️ Limitations & What AI CANNOT Do
+        ### \u26a0\ufe0f Limitations & What AI CANNOT Do
         
         **Important Considerations:**
-        - ❌ **Cannot predict black swan events**: Sudden news, policy changes, market crashes
-        - ❌ **Not 100% accurate**: Markets are influenced by countless factors
-        - ❌ **Historical patterns may not repeat**: Past performance ≠ future results
-        - ❌ **Cannot replace due diligence**: Always research before investing
-        - ❌ **Short-term noise**: Very short predictions (1-2 days) can be unreliable
+        - \u274c **Cannot predict black swan events**: Sudden news, policy changes, market crashes
+        - \u274c **Not 100% accurate**: Markets are influenced by countless factors
+        - \u274c **Historical patterns may not repeat**: Past performance ≠ future results
+        - \u274c **Cannot replace due diligence**: Always research before investing
+        - \u274c **Short-term noise**: Very short predictions (1-2 days) can be unreliable
         
-        ### 🎓 Making Informed Decisions
+        ### \U0001f3cd Making Informed Decisions
         
         **Best Practices:**
-        1. ✅ Use predictions as **ONE input**, not the only factor
-        2. ✅ Combine with **fundamental analysis** (company financials, industry trends)
-        3. ✅ Watch **market news** and events that AI can't predict
-        4. ✅ Use **confidence intervals** to understand prediction reliability
-        5. ✅ Start with **small positions** when testing predictions
-        6. ✅ Always use **stop-loss** orders to protect capital
-        7. ✅ **Backtest** your strategy before real trading
+        1. \u2705 Use predictions as **ONE input**, not the only factor
+        2. \u2705 Combine with **fundamental analysis** (company financials, industry trends)
+        3. \u2705 Watch **market news** and events that AI can't predict
+        4. \u2705 Use **confidence intervals** to understand prediction reliability
+        5. \u2705 Start with **small positions** when testing predictions
+        6. \u2705 Always use **stop-loss** orders to protect capital
+        7. \u2705 **Backtest** your strategy before real trading
         
         **Decision Framework:**
         ```
-        AI Prediction (Bullish) + Strong Fundamentals + Positive News = 🟢 Strong Buy Signal
-        AI Prediction (Bullish) + Weak Fundamentals + Negative News = 🟡 Hold/Cautious
-        AI Prediction (Bearish) + Strong Fundamentals = 🟡 Wait and Watch
-        AI Prediction (Bearish) + Weak Fundamentals = 🔴 Avoid/Exit
+        AI Prediction (Bullish) + Strong Fundamentals + Positive News = \U0001f7e2 Strong Buy Signal
+        AI Prediction (Bullish) + Weak Fundamentals + Negative News = \U0001f7e1 Hold/Cautious
+        AI Prediction (Bearish) + Strong Fundamentals = \U0001f7e1 Wait and Watch
+        AI Prediction (Bearish) + Weak Fundamentals = \U0001f534 Avoid/Exit
         ```
         
-        ### 💡 Quick Start Guide
+        ### \U0001f4ca Quick Start Guide
         
         **For Beginners:**
         1. Start with **LSTM (Fast)** model
@@ -361,18 +426,18 @@ def render_educational_intro(theme_colors: dict):
         4. Compare **multiple model predictions** to find consensus
         5. Analyze **feature importance** to understand model decisions
         
-        ### 📊 Understanding Model Types
+        ### \U0001f4ca Understanding Model Types
         
         | Model | Speed | Accuracy | Best For | Training Time |
         |-------|-------|----------|----------|---------------|
-        | LSTM (Fast) | ⚡⚡⚡ | ⭐⭐⭐ | Quick analysis | 1-2 min |
-        | LSTM (Deep) | ⚡⚡ | ⭐⭐⭐⭐ | Detailed analysis | 3-5 min |
-        | GRU | ⚡⚡⚡ | ⭐⭐⭐⭐ | Balanced | 2-3 min |
-        | Bidirectional | ⚡ | ⭐⭐⭐⭐⭐ | Best accuracy | 5-7 min |
-        | Hybrid | ⚡ | ⭐⭐⭐⭐ | Experimental | 7-10 min |
+        | LSTM (Fast) | \u26a1\u26a1\u26a1 | \u2b50\u2b50\u2b50 | Quick analysis | 1-2 min |
+        | LSTM (Deep) | \u26a1\u26a1 | \u2b50\u2b50\u2b50\u2b50 | Detailed analysis | 3-5 min |
+        | GRU | \u26a1\u26a1\u26a1 | \u2b50\u2b50\u2b50\u2b50 | Balanced | 2-3 min |
+        | Bidirectional | \u26a1 | \u2b50\u2b50\u2b50\u2b50\u2b50 | Best accuracy | 5-7 min |
+        | Hybrid | \u26a1 | \u2b50\u2b50\u2b50\u2b50 | Experimental | 7-10 min |
         
         ---
-        **💬 Remember**: AI is a powerful tool, but YOU make the final decision. Use it wisely! 
+        **\U0001f4ac Remember**: AI is a powerful tool, but YOU make the final decision. Use it wisely! 
         """)
 
 

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Strategy Backtest page module for AI Trading Lab PRO+
 Comprehensive backtesting framework with advanced metrics and visualizations
@@ -544,6 +545,53 @@ def display_backtest_results(results: dict, metrics: dict, df: pd.DataFrame,
     """Display comprehensive backtest results."""
     
     st.success("✅ Backtest completed successfully!")
+    
+    # Save Backtest Section
+    save_col1, save_col2 = st.columns([3, 1])
+    with save_col1:
+        backtest_name = st.text_input(
+            "💾 Save this backtest as:", 
+            value=f"{strategy}_{datetime.now().strftime('%Y%m%d_%H%M')}",
+            key="save_backtest_name",
+            help="Give this backtest a memorable name"
+        )
+    with save_col2:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        if st.button("💾 Save Backtest", type="primary", use_container_width=True, key="save_backtest_btn"):
+            user_id = st.session_state.get('user_id')
+            if user_id and backtest_name:
+                from src.supabase_client import get_supabase_client
+                supabase = get_supabase_client()
+                
+                # Prepare backtest data
+                backtest_data = {
+                    'strategy': strategy,
+                    'metrics': metrics,
+                    'results': {
+                        'trades': results.get('trades', []),
+                        'equity_curve': results.get('equity_curve', [])
+                    },
+                    'symbol': df.get('symbol', 'N/A') if isinstance(df, dict) else 'N/A'
+                }
+                
+                # Save to database
+                result = supabase.save_backtest_result(user_id, backtest_name, backtest_data)
+                if result:
+                    st.success(f"✅ Backtest '{backtest_name}' saved successfully!")
+                    supabase.log_activity(
+                        user_id=user_id,
+                        activity_type='backtest_save',
+                        description=f"Saved backtest: {backtest_name}",
+                        status='success'
+                    )
+                else:
+                    st.error("❌ Failed to save backtest. Please try again.")
+            elif not user_id:
+                st.error("❌ Please login to save backtests")
+            else:
+                st.warning("⚠️ Please enter a name for the backtest")
+    
+    st.markdown("---")
     
     # Performance Summary
     st.markdown("### 📊 Performance Summary")

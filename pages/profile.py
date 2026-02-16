@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 My Profile page module for AI Trading Lab PRO+
 Comprehensive user profile management with Zerodha integration
@@ -7,7 +8,7 @@ import json
 import os
 from datetime import datetime
 from ui.components import get_theme_colors
-from src.auth import AuthManager
+from src.auth_supabase import SupabaseAuthManager as AuthManager
 
 
 def render_my_profile():
@@ -15,9 +16,12 @@ def render_my_profile():
     theme_colors = get_theme_colors()
     auth_manager = AuthManager()
     
+    # Extract gradient to avoid f-string issues
+    gradient_bg = theme_colors.get('gradient_bg', 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)')
+    
     # Header with gradient
     st.markdown(f"""
-    <div style='background: {theme_colors['gradient_bg']}; padding: 20px; border-radius: 12px; margin-bottom: 20px; text-align: center;'>
+    <div style='background: {gradient_bg}; padding: 20px; border-radius: 12px; margin-bottom: 20px; text-align: center;'>
         <h1 style='color: white; margin: 0;'>👤 My Profile</h1>
         <p style='color: rgba(255,255,255,0.9); margin: 10px 0 0 0;'>
             Manage Your Account, Preferences & Trading Connections
@@ -67,6 +71,9 @@ def render_account_info(user_name: str, user_email: str, user_picture: str,
     """Render account information section."""
     st.markdown("### 👤 Account Information")
     
+    # Extract theme colors to avoid f-string issues
+    gradient_bg = theme_colors.get('gradient_bg', 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)')
+    
     # Profile card
     col1, col2 = st.columns([1, 3])
     
@@ -77,7 +84,7 @@ def render_account_info(user_name: str, user_email: str, user_picture: str,
             # Display initials in a circle
             initials = ''.join([word[0].upper() for word in user_name.split()[:2]])
             st.markdown(f"""
-            <div style='background: {theme_colors["gradient_bg"]}; width: 150px; height: 150px; 
+            <div style='background: {gradient_bg}; width: 150px; height: 150px; 
                         border-radius: 50%; display: flex; align-items: center; justify-content: center;'>
                 <span style='color: white; font-size: 48px; font-weight: bold;'>{initials}</span>
             </div>
@@ -366,6 +373,9 @@ def render_trading_stats(theme_colors: dict):
     st.markdown("### 📊 Trading Statistics")
     st.caption("Your trading activity and performance metrics")
     
+    # Extract theme colors
+    card_bg = theme_colors.get('card_bg', '#1E1E1E')
+    
     # Mock statistics (replace with actual data from database)
     col1, col2, col3, col4 = st.columns(4)
     
@@ -396,7 +406,7 @@ def render_trading_stats(theme_colors: dict):
     
     for activity in activity_data:
         st.markdown(f"""
-        <div style='background: {theme_colors["card_bg"]}; padding: 10px; border-radius: 8px; margin-bottom: 8px;'>
+        <div style='background: {card_bg}; padding: 10px; border-radius: 8px; margin-bottom: 8px;'>
             <strong>{activity['action']}</strong><br>
             <small style='color: #718096;'>{activity['date']}</small><br>
             <span style='color: #A0AEC0;'>{activity['details']}</span>
@@ -507,14 +517,24 @@ def render_security_settings(theme_colors: dict, auth_manager: AuthManager):
             confirm_password = st.text_input("Confirm New Password", type="password")
             
             if st.form_submit_button("🔄 Change Password", type="primary", use_container_width=True):
-                if new_password == confirm_password:
-                    if len(new_password) >= 6:
-                        st.success("✅ Password changed successfully!")
-                        st.info("Please login again with your new password")
-                    else:
-                        st.error("❌ Password must be at least 6 characters")
-                else:
+                if not current_password or not new_password or not confirm_password:
+                    st.error("❌ All fields are required")
+                elif new_password != confirm_password:
                     st.error("❌ Passwords do not match")
+                elif len(new_password) < 6:
+                    st.error("❌ Password must be at least 6 characters")
+                else:
+                    # Call the actual password change function
+                    user_id = st.session_state.get('user_id')
+                    if user_id:
+                        success, message = auth_manager.change_password(user_id, current_password, new_password)
+                        if success:
+                            st.success("✅ Password changed successfully!")
+                            st.info("Please login again with your new password")
+                        else:
+                            st.error(f"❌ {message}")
+                    else:
+                        st.error("❌ User ID not found. Please logout and login again.")
     else:
         st.info(f"🔐 You're logged in via {st.session_state.get('login_method', 'OAuth').title()}. Password change not applicable.")
     
