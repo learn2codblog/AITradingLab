@@ -13,6 +13,21 @@ def render_security_settings():
         "🔐"
     )
 
+    # Log activity
+    try:
+        from src.supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+        user_id = st.session_state.get('user_id')
+        if user_id and supabase.is_connected():
+            supabase.log_activity(
+                user_id=user_id,
+                activity_type='security_settings_view',
+                description="Opened Security Settings",
+                status='success'
+            )
+    except Exception:
+        pass
+
     st.info("🚧 Security Settings page is under development. This will include security configuration.")
 
     # Placeholder content

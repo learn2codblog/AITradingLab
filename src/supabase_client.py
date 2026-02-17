@@ -280,14 +280,14 @@ class SupabaseClient:
     # ==================== ACTIVITY LOGGING ====================
     
     def log_activity(self, user_id: str, activity_type: str, description: str,
-                    action_details: Dict = None, status: str = 'success') -> bool:
-        """Log user activity for audit trail (uses service role to bypass RLS)"""
+                     action_details: Dict = None, status: str = 'success') -> bool:
+        """Log user activity for audit trail (uses service role to bypass RLS)."""
         # Use service client to bypass RLS policies for logging
         client_to_use = self.service_client if self.service_client else self.client
-        
+
         if not client_to_use:
             return False
-        
+
         try:
             activity_data = {
                 'user_id': user_id,
@@ -298,281 +298,159 @@ class SupabaseClient:
                 'timestamp': datetime.utcnow().isoformat(),
                 'ip_address': st.session_state.get('ip_address', 'unknown')
             }
-            
+
             response = client_to_use.table('activity_logs').insert(activity_data).execute()
             return bool(response.data)
         except Exception as e:
             # Silently fail - don't block operations if logging fails
             print(f"Warning: Failed to log activity: {str(e)}")
             return False
-    
+
+    def log_trading_activity(self, user_id: str, activity_type: str, description: str,
+                            symbol: str = None, source: str = None,
+                            details: Dict = None, status: str = 'success') -> bool:
+        """Log trading-specific activity for reporting (uses service role to bypass RLS)."""
+        client_to_use = self.service_client if self.service_client else self.client
+        if not client_to_use:
+            return False
+
+        try:
+            activity_data = {
+                'user_id': user_id,
+                'activity_type': activity_type,
+                'description': description,
+                'symbol': symbol,
+                'source': source,
+                'details': json.dumps(details) if details else None,
+                'status': status,
+                'timestamp': datetime.utcnow().isoformat(),
+                'ip_address': st.session_state.get('ip_address', 'unknown')
+            }
+            response = client_to_use.table('trading_activity').insert(activity_data).execute()
+            return bool(response.data)
+        except Exception as e:
+            print(f"Warning: Failed to log trading activity: {str(e)}")
+            return False
+
     def get_user_activities(self, user_id: str, limit: int = 50) -> List[Dict]:
-        """Get user's recent activities"""
+        """Get user's recent activities (uses service role to bypass RLS)."""
         if not self.is_connected():
             return []
-        
+
         try:
-            response = self.client.table('activity_logs').select('*').eq('user_id', user_id).order(
+            client_to_use = self.service_client if self.service_client else self.client
+            response = client_to_use.table('activity_logs').select('*').eq('user_id', user_id).order(
                 'timestamp', desc=True
             ).limit(limit).execute()
             return response.data if response.data else []
         except Exception as e:
             st.error(f"Error fetching activities: {str(e)}")
             return []
-    
-    # ==================== PORTFOLIO DATA ====================
-    
-    def save_portfolio_config(self, user_id: str, portfolio_name: str, 
-                             config_data: Dict) -> Optional[Dict]:
-        """Save user's portfolio configuration (uses service role to bypass RLS)"""
-        if not self.is_connected():
-            return None
-        
-        # Check if service client is available
-        if not self.service_client:
-            st.error("⚠️ Service role key not configured. Cannot save portfolio.")
-            st.info("""
-            Please set SUPABASE_SERVICE_ROLE_KEY environment variable.
-            Get it from: Supabase Dashboard → Settings → API → service_role key
-            """)
-            return None
-        
-        try:
-            portfolio_data = {
-                'user_id': user_id,
-                'portfolio_name': portfolio_name,
-                'config_data': json.dumps(config_data),
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat()
-            }
-            
-            # Use service client for portfolio operations (bypass RLS)
-            client_to_use = self.service_client
-            
-            # Check if exists
-            existing = client_to_use.table('portfolios').select('id').eq(
-                'user_id', user_id
-            ).eq('portfolio_name', portfolio_name).execute()
-            
-            if existing.data:
-                response = client_to_use.table('portfolios').update(portfolio_data).eq(
-                    'id', existing.data[0]['id']
-                ).execute()
-            else:
-                response = client_to_use.table('portfolios').insert(portfolio_data).execute()
-            
-            return response.data[0] if response.data else None
-        except Exception as e:
-            st.error(f"Error saving portfolio: {str(e)}")
-            return None
-    
-    def get_user_portfolios(self, user_id: str) -> List[Dict]:
-        """Get all user portfolios (uses service role for data access)"""
+
+    def get_user_trading_activity(self, user_id: str, limit: int = 50) -> List[Dict]:
+        """Get user's trading-specific activity (uses service role to bypass RLS)."""
         if not self.is_connected():
             return []
-        
+
         try:
             client_to_use = self.service_client if self.service_client else self.client
-            response = client_to_use.table('portfolios').select('*').eq('user_id', user_id).execute()
+            response = client_to_use.table('trading_activity').select('*').eq('user_id', user_id).order(
+                'timestamp', desc=True
+            ).limit(limit).execute()
             return response.data if response.data else []
         except Exception as e:
-            st.error(f"Error fetching portfolios: {str(e)}")
+            st.error(f"Error fetching trading activity: {str(e)}")
             return []
-    
-    def get_portfolio_by_name(self, user_id: str, portfolio_name: str) -> Optional[Dict]:
-        """Get specific portfolio by name (uses service role for data access)"""
-        if not self.is_connected():
+
+    # ==================== BACKTEST RESULTS ====================
+
+    def save_backtest_result(self, user_id: str, test_name: str, strategy_type: str,
+                             symbol: str, result_data: Dict, performance_metrics: Dict) -> Optional[str]:
+        """Save a backtest result and return its ID (uses service role to bypass RLS)."""
+        client_to_use = self.service_client if self.service_client else self.client
+        if not client_to_use:
             return None
-        
+
         try:
-            client_to_use = self.service_client if self.service_client else self.client
-            response = client_to_use.table('portfolios').select('*').eq(
-                'user_id', user_id
-            ).eq('portfolio_name', portfolio_name).execute()
-            return response.data[0] if response.data else None
-        except Exception as e:
-            st.error(f"Error fetching portfolio: {str(e)}")
-            return None
-    
-    def delete_portfolio(self, user_id: str, portfolio_name: str) -> bool:
-        """Delete a portfolio (uses service role to bypass RLS)"""
-        if not self.is_connected():
-            return False
-        
-        try:
-            client_to_use = self.service_client if self.service_client else self.client
-            response = client_to_use.table('portfolios').delete().eq(
-                'user_id', user_id
-            ).eq('portfolio_name', portfolio_name).execute()
-            return True
-        except Exception as e:
-            st.error(f"Error deleting portfolio: {str(e)}")
-            return False
-    
-    # ==================== BACKTESTING RESULTS ====================
-    
-    def save_backtest_result(self, user_id: str, test_name: str,
-                            result_data: Dict) -> Optional[Dict]:
-        """Save backtest results (uses service role to bypass RLS)"""
-        if not self.is_connected():
-            return None
-        
-        try:
-            backtest_data = {
+            payload = {
                 'user_id': user_id,
                 'test_name': test_name,
-                'result_data': json.dumps(result_data),
+                'strategy_type': strategy_type,
+                'symbol': symbol,
+                'result_data': result_data,
+                'performance_metrics': performance_metrics,
                 'created_at': datetime.utcnow().isoformat()
             }
-            
-            client_to_use = self.service_client if self.service_client else self.client
-            response = client_to_use.table('backtest_results').insert(backtest_data).execute()
-            return response.data[0] if response.data else None
+            response = client_to_use.table('backtest_results').insert(payload).execute()
+            if response.data:
+                return response.data[0].get('id')
+            return None
         except Exception as e:
             st.error(f"Error saving backtest result: {str(e)}")
             return None
-    
-    def get_user_backtest_results(self, user_id: str, limit: int = 20) -> List[Dict]:
-        """Get user's backtest history (uses service role for data access)"""
+
+    def get_user_backtest_results(self, user_id: str, limit: int = 50) -> List[Dict]:
+        """Get user's backtest results (uses service role to bypass RLS)."""
         if not self.is_connected():
             return []
-        
+
         try:
             client_to_use = self.service_client if self.service_client else self.client
-            response = client_to_use.table('backtest_results').select('*').eq(
-                'user_id', user_id
-            ).order('created_at', desc=True).limit(limit).execute()
+            response = client_to_use.table('backtest_results').select('*').eq('user_id', user_id).order(
+                'created_at', desc=True
+            ).limit(limit).execute()
             return response.data if response.data else []
         except Exception as e:
             st.error(f"Error fetching backtest results: {str(e)}")
             return []
-    
+
     def delete_backtest_result(self, user_id: str, test_name: str) -> bool:
-        """Delete a backtest result (uses service role to bypass RLS)"""
-        if not self.is_connected():
+        """Delete backtest results by test name (uses service role to bypass RLS)."""
+        client_to_use = self.service_client if self.service_client else self.client
+        if not client_to_use:
             return False
-        
+
         try:
-            client_to_use = self.service_client if self.service_client else self.client
-            client_to_use.table('backtest_results').delete().eq(
-                'user_id', user_id
-            ).eq('test_name', test_name).execute()
-            return True
+            response = client_to_use.table('backtest_results').delete().eq('user_id', user_id).eq(
+                'test_name', test_name
+            ).execute()
+            return bool(response.data)
         except Exception as e:
             st.error(f"Error deleting backtest result: {str(e)}")
             return False
-    
-    # ==================== PREFERENCES & SETTINGS ====================
-    
-    def save_user_settings(self, user_id: str, settings: Dict) -> bool:
-        """Save user preferences and settings (uses service role to bypass RLS)"""
-        if not self.is_connected():
+
+    def save_backtest_trades(self, user_id: str, backtest_id: str, trades: List[Dict]) -> bool:
+        """Save backtest trades linked to a backtest result (uses service role to bypass RLS)."""
+        client_to_use = self.service_client if self.service_client else self.client
+        if not client_to_use or not trades:
             return False
-        
+
         try:
-            settings_data = {
-                'user_id': user_id,
-                'settings': json.dumps(settings),
-                'updated_at': datetime.utcnow().isoformat()
-            }
-            
-            client_to_use = self.service_client if self.service_client else self.client
-            
-            # Check if exists
-            existing = client_to_use.table('user_settings').select('id').eq('user_id', user_id).execute()
-            
-            if existing.data:
-                response = client_to_use.table('user_settings').update(settings_data).eq('user_id', user_id).execute()
-            else:
-                response = client_to_use.table('user_settings').insert(settings_data).execute()
-            
+            payload = []
+            for trade in trades:
+                trade_payload = dict(trade)
+                trade_payload['user_id'] = user_id
+                trade_payload['backtest_id'] = backtest_id
+                trade_payload['created_at'] = datetime.utcnow().isoformat()
+                payload.append(trade_payload)
+
+            response = client_to_use.table('backtest_trades').insert(payload).execute()
             return bool(response.data)
         except Exception as e:
-            st.error(f"Error saving settings: {str(e)}")
+            st.error(f"Error saving backtest trades: {str(e)}")
             return False
-    
-    def get_user_settings(self, user_id: str) -> Optional[Dict]:
-        """Get user's settings and preferences (uses service role for data access)"""
-        if not self.is_connected():
-            return None
-        
-        try:
-            client_to_use = self.service_client if self.service_client else self.client
-            response = client_to_use.table('user_settings').select('*').eq('user_id', user_id).execute()
-            if response.data:
-                settings = response.data[0].get('settings')
-                return json.loads(settings) if isinstance(settings, str) else settings
-            return None
-        except Exception as e:
-            st.error(f"Error fetching settings: {str(e)}")
-            return None
-    
-    # ==================== WATCHLIST ====================
-    
-    def add_to_watchlist(self, user_id: str, symbol: str) -> bool:
-        """Add stock to user's watchlist (uses service role to bypass RLS)"""
-        if not self.is_connected():
-            return False
-        
-        try:
-            client_to_use = self.service_client if self.service_client else self.client
-            
-            # Check if already in watchlist
-            existing = client_to_use.table('watchlists').select('id').eq(
-                'user_id', user_id
-            ).eq('symbol', symbol).execute()
-            
-            if existing.data:
-                return True  # Already in watchlist
-            
-            watchlist_data = {
-                'user_id': user_id,
-                'symbol': symbol,
-                'added_at': datetime.utcnow().isoformat()
-            }
-            
-            response = client_to_use.table('watchlists').insert(watchlist_data).execute()
-            return bool(response.data)
-        except Exception as e:
-            st.error(f"Error adding to watchlist: {str(e)}")
-            return False
-    
-    def remove_from_watchlist(self, user_id: str, symbol: str) -> bool:
-        """Remove stock from user's watchlist (uses service role to bypass RLS)"""
-        if not self.is_connected():
-            return False
-        
-        try:
-            client_to_use = self.service_client if self.service_client else self.client
-            client_to_use.table('watchlists').delete().eq(
-                'user_id', user_id
-            ).eq('symbol', symbol).execute()
-            return True
-        except Exception as e:
-            st.error(f"Error removing from watchlist: {str(e)}")
-            return False
-    
-    def get_user_watchlist(self, user_id: str) -> List[str]:
-        """Get user's watchlist (uses service role for data access)"""
+
+    def get_user_backtest_trades(self, user_id: str, limit: int = 200) -> List[Dict]:
+        """Get user's backtest trades (uses service role to bypass RLS)."""
         if not self.is_connected():
             return []
-        
+
         try:
             client_to_use = self.service_client if self.service_client else self.client
-            response = client_to_use.table('watchlists').select('symbol').eq('user_id', user_id).execute()
-            return [item['symbol'] for item in response.data] if response.data else []
+            response = client_to_use.table('backtest_trades').select('*').eq('user_id', user_id).order(
+                'entry_time', desc=True
+            ).limit(limit).execute()
+            return response.data if response.data else []
         except Exception as e:
-            st.error(f"Error fetching watchlist: {str(e)}")
+            st.error(f"Error fetching backtest trades: {str(e)}")
             return []
-
-
-# Global Supabase client instance
-_supabase_client = None
-
-
-def get_supabase_client() -> SupabaseClient:
-    """Get or create the global Supabase client"""
-    global _supabase_client
-    if _supabase_client is None:
-        _supabase_client = SupabaseClient()
-    return _supabase_client

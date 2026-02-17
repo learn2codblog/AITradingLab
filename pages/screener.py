@@ -194,7 +194,7 @@ def render_smart_screener():
     # Run Screener Button
     if st.button("🚀 Run Advanced Screener", use_container_width=True, type="primary"):
         with st.spinner(f"🔄 Screening {num_stocks} stocks... This may take 2-5 minutes for large datasets."):
-            
+
             # Build filter configuration
             filter_config = {
                 'market_type': market_type,
@@ -219,6 +219,31 @@ def render_smart_screener():
                 'ai_analysis_mode': ai_analysis_mode
             }
             
+            # Log activity
+            try:
+                from src.supabase_client import get_supabase_client
+                supabase = get_supabase_client()
+                user_id = st.session_state.get('user_id')
+                if user_id and supabase.is_connected():
+                    supabase.log_activity(
+                        user_id=user_id,
+                        activity_type='screener_run',
+                        description=f"Advanced screener run ({market_type})",
+                        action_details={
+                            'market_type': market_type,
+                            'sectors': sector_filter,
+                            'market_caps': market_cap,
+                            'num_stocks': num_stocks,
+                            'screen_type': screen_type,
+                            'min_score': min_score,
+                            'timeframe': timeframe,
+                            'ai_analysis_mode': ai_analysis_mode
+                        },
+                        status='success'
+                    )
+            except Exception:
+                pass
+
             # Run screener
             results = run_advanced_screener(filter_config)
             

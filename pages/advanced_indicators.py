@@ -247,7 +247,26 @@ def render_advanced_indicators():
             "info"
         )
         return
-    
+
+    # Log activity
+    try:
+        from src.supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+        user_id = st.session_state.get('user_id')
+        if user_id and supabase.is_connected():
+            supabase.log_activity(
+                user_id=user_id,
+                activity_type='advanced_indicators',
+                description=f"Advanced indicators analysis for {symbol}",
+                action_details={
+                    'symbol': symbol,
+                    'days': days
+                },
+                status='success'
+            )
+    except Exception:
+        pass
+
     # Load data
     with st.spinner(f"📊 Loading data for {symbol}..."):
         try:

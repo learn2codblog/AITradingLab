@@ -61,6 +61,26 @@ def render_stock_analysis(start_date, end_date):
                 st.error("❌ Insufficient data available for this stock. Please try another symbol.")
                 st.stop()
 
+            # Log activity
+            try:
+                from src.supabase_client import get_supabase_client
+                supabase = get_supabase_client()
+                user_id = st.session_state.get('user_id')
+                if user_id and supabase.is_connected():
+                    supabase.log_activity(
+                        user_id=user_id,
+                        activity_type='analysis',
+                        description=f"Stock analysis run for {symbol}",
+                        action_details={
+                            'symbol': symbol,
+                            'analysis_type': analysis_type,
+                            'prediction_days': prediction_days
+                        },
+                        status='success'
+                    )
+            except Exception:
+                pass
+
             # Get fundamentals (always needed for basic info)
             fundamentals = get_fundamentals(symbol)
             sentiment = get_news_sentiment(symbol)

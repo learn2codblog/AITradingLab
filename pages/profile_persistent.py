@@ -39,7 +39,21 @@ def render_my_profile():
         </p>
     </div>
     """, unsafe_allow_html=True)
-    
+
+    # Log activity
+    if not st.session_state.get('logged_profile_persistent_view', False):
+        try:
+            if user_id and supabase.is_connected():
+                supabase.log_activity(
+                    user_id=user_id,
+                    activity_type='profile_view',
+                    description="Opened My Profile (persistent)",
+                    status='success'
+                )
+                st.session_state.logged_profile_persistent_view = True
+        except Exception:
+            pass
+
     # Profile tabs
     tabs = st.tabs([
         "👤 Account Info",
@@ -185,6 +199,7 @@ def render_zerodha_connection(user_id: str, supabase, theme_colors: dict):
                     user_id,
                     'kite_disconnected',
                     'Disconnected from Zerodha',
+                    status='success'
                 )
                 st.rerun()
             else:
@@ -232,6 +247,7 @@ def render_zerodha_connection(user_id: str, supabase, theme_colors: dict):
                         'kite_connected',
                         'Connected to Zerodha with OAuth',
                         {'oauth_token': oauth_token[:10] + '...'},
+                        status='success'
                     )
                     st.rerun()
                 else:
@@ -356,7 +372,8 @@ def render_profile_preferences(user_id: str, supabase, theme_colors: dict):
                 user_id,
                 'preferences_updated',
                 'User updated preferences',
-                action_details=settings
+                action_details=settings,
+                status='success'
             )
         else:
             st.error("❌ Failed to save preferences")

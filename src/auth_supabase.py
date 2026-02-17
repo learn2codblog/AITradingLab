@@ -212,7 +212,7 @@ class SupabaseAuthManager:
         st.session_state.user_email = email
         st.session_state.user_name = name
         st.session_state.user_picture = picture
-        st.session_state.session_start = datetime.now()
+        st.session_state.session_start = datetime.utcnow()
         st.session_state.login_method = method
     
     def is_authenticated(self) -> bool:
@@ -228,7 +228,7 @@ class SupabaseAuthManager:
         if session_start is None:
             return False
         
-        elapsed = (datetime.now() - session_start).total_seconds()
+        elapsed = (datetime.utcnow() - session_start).total_seconds()
         return elapsed < self.session_timeout
     
     def logout(self):
@@ -275,7 +275,7 @@ class SupabaseAuthManager:
         if session_start is None:
             return "Unknown"
         
-        elapsed = datetime.now() - session_start
+        elapsed = datetime.utcnow() - session_start
         hours = elapsed.seconds // 3600
         minutes = (elapsed.seconds % 3600) // 60
         

@@ -124,6 +124,27 @@ def render_ai(start_date, end_date):
             if stock_data is None or len(stock_data) < 100:
                 st.error("❌ Could not load sufficient data. Please check the symbol.")
             else:
+                # Log activity
+                try:
+                    from src.supabase_client import get_supabase_client
+                    supabase = get_supabase_client()
+                    user_id = st.session_state.get('user_id')
+                    if user_id and supabase.is_connected():
+                        supabase.log_activity(
+                            user_id=user_id,
+                            activity_type='ai_analysis',
+                            description=f"AI deep analysis run for {ai_symbol}",
+                            action_details={
+                                'symbol': ai_symbol,
+                                'analysis_depth': analysis_depth,
+                                'supertrend_period': supertrend_period,
+                                'supertrend_multiplier': supertrend_mult
+                            },
+                            status='success'
+                        )
+                except Exception:
+                    pass
+
                 # Calculate technical indicators
                 stock_data = calculate_technical_indicators(stock_data)
 

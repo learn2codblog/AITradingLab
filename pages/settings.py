@@ -74,7 +74,7 @@ def render_settings():
             save_settings(settings)
             st.success("✅ Settings saved successfully!")
             st.balloons()
-    
+
     with col2:
         if st.button("🔄 Reset to Defaults", use_container_width=True):
             if st.session_state.get('confirm_reset', False):

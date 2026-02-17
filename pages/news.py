@@ -171,6 +171,24 @@ def render_company_news(theme_colors: dict):
         fetch_button = st.button("🔍 Fetch News", key="get_company_news", use_container_width=True, type="primary")
     
     if fetch_button and yf:
+        # Log activity
+        try:
+            from src.supabase_client import get_supabase_client
+            supabase = get_supabase_client()
+            user_id = st.session_state.get('user_id')
+            if user_id and supabase.is_connected():
+                supabase.log_activity(
+                    user_id=user_id,
+                    activity_type='news_company_fetch',
+                    description=f"Company news fetch for {symbol}",
+                    action_details={
+                        'symbol': symbol
+                    },
+                    status='success'
+                )
+        except Exception:
+            pass
+
         with st.spinner(f"📡 Fetching news for {symbol}..."):
             try:
                 ticker = yf.Ticker(symbol)
@@ -315,11 +333,29 @@ def render_sentiment_analysis(theme_colors: dict):
     
     if analyze_button:
         symbol_list = [s.strip() for s in symbols.split('\n') if s.strip()]
-        
+
         if not symbol_list:
             st.warning("Please enter at least one symbol")
             return
-        
+
+        # Log activity
+        try:
+            from src.supabase_client import get_supabase_client
+            supabase = get_supabase_client()
+            user_id = st.session_state.get('user_id')
+            if user_id and supabase.is_connected():
+                supabase.log_activity(
+                    user_id=user_id,
+                    activity_type='news_sentiment',
+                    description="News sentiment analysis",
+                    action_details={
+                        'symbols': symbol_list
+                    },
+                    status='success'
+                )
+        except Exception:
+            pass
+
         st.info(f"🔄 Analyzing sentiment for {len(symbol_list)} stocks...")
         
         results = []
@@ -441,6 +477,27 @@ def render_news_search(theme_colors: dict):
             )
     
     if search_button and search_query:
+        # Log activity
+        try:
+            from src.supabase_client import get_supabase_client
+            supabase = get_supabase_client()
+            user_id = st.session_state.get('user_id')
+            if user_id and supabase.is_connected():
+                supabase.log_activity(
+                    user_id=user_id,
+                    activity_type='news_search',
+                    description="News search",
+                    action_details={
+                        'query': search_query,
+                        'category': category_filter,
+                        'days': days_filter,
+                        'sources': source_filter
+                    },
+                    status='success'
+                )
+        except Exception:
+            pass
+
         st.info(f"🔄 Searching for: '{search_query}'")
         
         # Get all news

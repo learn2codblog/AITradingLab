@@ -190,14 +190,42 @@ def render_deep_learning():
         if not symbol or symbol.strip() == "":
             st.error("❌ Please enter a stock symbol")
             return
-        
+
         if forecast_days < 1:
             st.error("❌ Forecast days must be at least 1")
             return
-        
+
         if lookback < 30:
             st.warning("⚠️ Lookback period is very short. Recommended: 60+ days for better accuracy")
-        
+
+        # Log activity
+        try:
+            from src.supabase_client import get_supabase_client
+            supabase = get_supabase_client()
+            user_id = st.session_state.get('user_id')
+            if user_id and supabase.is_connected():
+                supabase.log_activity(
+                    user_id=user_id,
+                    activity_type='deep_learning_run',
+                    description=f"Deep learning run for {symbol}",
+                    action_details={
+                        'symbol': symbol,
+                        'model_type': model_type,
+                        'forecast_days': forecast_days,
+                        'lookback': lookback,
+                        'epochs': epochs,
+                        'features': {
+                            'use_volume': use_volume,
+                            'use_technical': use_technical,
+                            'use_volatility': use_volatility,
+                            'use_momentum': use_momentum
+                        }
+                    },
+                    status='success'
+                )
+        except Exception:
+            pass
+
         # Determine features based on user selection
         features_to_use = ['Close']
         if use_volume:

@@ -61,6 +61,20 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     created_at TIMESTAMP DEFAULT current_timestamp
 );
 
+-- Trading Activity (separate from generic activity_logs)
+CREATE TABLE IF NOT EXISTS trading_activity (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    activity_type VARCHAR(100) NOT NULL, -- 'analysis', 'ai_analysis', 'backtest_run', 'screener_run', 'portfolio_update', 'trade'
+    symbol VARCHAR(50),
+    source VARCHAR(50), -- 'analysis', 'ai', 'backtest', 'screener', 'portfolio'
+    details JSONB,
+    status VARCHAR(50) DEFAULT 'success',
+    ip_address VARCHAR(45),
+    timestamp TIMESTAMP DEFAULT current_timestamp,
+    created_at TIMESTAMP DEFAULT current_timestamp
+);
+
 -- Portfolios
 CREATE TABLE IF NOT EXISTS portfolios (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -80,6 +94,26 @@ CREATE TABLE IF NOT EXISTS backtest_results (
     symbol VARCHAR(50),
     result_data JSONB,
     performance_metrics JSONB,
+    created_at TIMESTAMP DEFAULT current_timestamp
+);
+
+-- Backtest Trades
+CREATE TABLE IF NOT EXISTS backtest_trades (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    backtest_id UUID NOT NULL REFERENCES backtest_results(id) ON DELETE CASCADE,
+    symbol VARCHAR(50),
+    strategy_type VARCHAR(100),
+    side VARCHAR(10), -- 'long' or 'short'
+    entry_time TIMESTAMP,
+    exit_time TIMESTAMP,
+    entry_price DECIMAL(18, 6),
+    exit_price DECIMAL(18, 6),
+    shares INTEGER,
+    pnl DECIMAL(18, 6),
+    return_pct DECIMAL(12, 6),
+    commission DECIMAL(18, 6),
+    slippage DECIMAL(18, 6),
     created_at TIMESTAMP DEFAULT current_timestamp
 );
 
@@ -109,6 +143,13 @@ CREATE INDEX IF NOT EXISTS idx_backtest_results_user_id ON backtest_results(user
 CREATE INDEX IF NOT EXISTS idx_portfolios_user_id ON portfolios(user_id);
 CREATE INDEX IF NOT EXISTS idx_watchlists_user_id ON watchlists(user_id);
 CREATE INDEX IF NOT EXISTS idx_watchlists_symbol ON watchlists(symbol);
+CREATE INDEX IF NOT EXISTS idx_trading_activity_user_id ON trading_activity(user_id);
+CREATE INDEX IF NOT EXISTS idx_trading_activity_timestamp ON trading_activity(timestamp);
+CREATE INDEX IF NOT EXISTS idx_trading_activity_type ON trading_activity(activity_type);
+CREATE INDEX IF NOT EXISTS idx_trading_activity_symbol ON trading_activity(symbol);
+CREATE INDEX IF NOT EXISTS idx_backtest_trades_user_id ON backtest_trades(user_id);
+CREATE INDEX IF NOT EXISTS idx_backtest_trades_backtest_id ON backtest_trades(backtest_id);
+CREATE INDEX IF NOT EXISTS idx_backtest_trades_entry_time ON backtest_trades(entry_time);
 
 -- Row Level Security (RLS) Policies
 -- Enable RLS on all tables
@@ -116,8 +157,10 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE kite_credentials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trading_activity ENABLE ROW LEVEL SECURITY;
 ALTER TABLE portfolios ENABLE ROW LEVEL SECURITY;
 ALTER TABLE backtest_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE backtest_trades ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE watchlists ENABLE ROW LEVEL SECURITY;
 
@@ -186,6 +229,21 @@ DROP POLICY IF EXISTS "Users can insert own activity logs" ON activity_logs CASC
 CREATE POLICY "Users can insert own activity logs" ON activity_logs
     FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+-- Policy: Users can read their own trading activity
+DROP POLICY IF EXISTS "Users can read own trading activity" ON trading_activity CASCADE;
+CREATE POLICY "Users can read own trading activity" ON trading_activity
+    FOR SELECT USING (auth.uid() = user_id);
+
+-- Policy: Users can insert their own trading activity
+DROP POLICY IF EXISTS "Users can insert own trading activity" ON trading_activity CASCADE;
+CREATE POLICY "Users can insert own trading activity" ON trading_activity
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Policy: Users can delete their own trading activity
+DROP POLICY IF EXISTS "Users can delete own trading activity" ON trading_activity CASCADE;
+CREATE POLICY "Users can delete own trading activity" ON trading_activity
+    FOR DELETE USING (auth.uid() = user_id);
+
 -- Policy: Users can read their own portfolios
 DROP POLICY IF EXISTS "Users can read own portfolios" ON portfolios CASCADE;
 CREATE POLICY "Users can read own portfolios" ON portfolios
@@ -219,6 +277,21 @@ CREATE POLICY "Users can insert own backtest results" ON backtest_results
 -- Policy: Users can delete their own backtest results
 DROP POLICY IF EXISTS "Users can delete own backtest results" ON backtest_results CASCADE;
 CREATE POLICY "Users can delete own backtest results" ON backtest_results
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Policy: Users can read their own backtest trades
+DROP POLICY IF EXISTS "Users can read own backtest trades" ON backtest_trades CASCADE;
+CREATE POLICY "Users can read own backtest trades" ON backtest_trades
+    FOR SELECT USING (auth.uid() = user_id);
+
+-- Policy: Users can insert their own backtest trades
+DROP POLICY IF EXISTS "Users can insert own backtest trades" ON backtest_trades CASCADE;
+CREATE POLICY "Users can insert own backtest trades" ON backtest_trades
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Policy: Users can delete their own backtest trades
+DROP POLICY IF EXISTS "Users can delete own backtest trades" ON backtest_trades CASCADE;
+CREATE POLICY "Users can delete own backtest trades" ON backtest_trades
     FOR DELETE USING (auth.uid() = user_id);
 
 -- Policy: Users can read their own settings

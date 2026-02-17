@@ -32,6 +32,11 @@ from datetime import datetime, timedelta
 import json
 import os
 
+try:
+    import requests
+except Exception:
+    requests = None
+
 # ══════════════════════════════════════════════════════════════════════
 # APP CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════
@@ -63,12 +68,26 @@ except Exception as e:
 from src.auth_supabase import SupabaseAuthManager as AuthManager
 from ui.login_page import render_login_page
 
+# ══════════════════════════════════════════════════════════════════════
+# SESSION CONTEXT (IP + TIMEZONE)
+# ══════════════════════════════════════════════════════════════════════
+
+if 'user_timezone' not in st.session_state:
+    st.session_state.user_timezone = 'UTC'
+
+if 'ip_address' not in st.session_state:
+    ip_address = 'unknown'
+    if requests is not None:
+        try:
+            ip_address = requests.get('https://api.ipify.org', timeout=3).text.strip()
+        except Exception:
+            ip_address = 'unknown'
+    st.session_state.ip_address = ip_address
+
 # OAuth callback handling: exchange authorization code for tokens and create session
 try:
-    import requests
     from utils.oauth_config import oauth_config
 except Exception:
-    requests = None
     oauth_config = None
 
 # If the app was redirected back with an auth 'code', handle the exchange before auth checks
@@ -98,6 +117,8 @@ try:
                     auth_manager_temp = AuthManager()
                     auth_manager_temp.initialize_session_state()
                     auth_manager_temp.set_user_session(email=email, name=name, picture=picture, method=provider)
+                    if st.session_state.get('user_timezone') is None:
+                        st.session_state.user_timezone = 'UTC'
                     # Clear query params and reload
                     try:
                         st.experimental_set_query_params()

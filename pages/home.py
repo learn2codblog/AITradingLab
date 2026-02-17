@@ -13,6 +13,23 @@ def render_home_page():
         "🚀"
     )
 
+    # Log activity once per session
+    if not st.session_state.get('logged_home_view', False):
+        try:
+            from src.supabase_client import get_supabase_client
+            supabase = get_supabase_client()
+            user_id = st.session_state.get('user_id')
+            if user_id and supabase.is_connected():
+                supabase.log_activity(
+                    user_id=user_id,
+                    activity_type='home_view',
+                    description="Opened Home page",
+                    status='success'
+                )
+                st.session_state.logged_home_view = True
+        except Exception:
+            pass
+
     # Welcome Cards
     col1, col2, col3 = st.columns(3)
 

@@ -4,8 +4,27 @@
     <list default="true" id="0f77fe36-067f-4af8-8989-a2ce5cf3dcbd" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app_modern.py" beforeDir="false" afterPath="$PROJECT_DIR$/app_modern.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/advanced_ai.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/advanced_ai.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/fundamental_analysis.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/fundamental_analysis.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/SUPABASE_SCHEMA.sql" beforeDir="false" afterPath="$PROJECT_DIR$/docs/SUPABASE_SCHEMA.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/account.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/account.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/advanced_indicators.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/advanced_indicators.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/ai.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/ai.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/analysis.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/analysis.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/backtest.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/backtest.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/data_management.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/data_management.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/deep_learning.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/deep_learning.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/home.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/home.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/news.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/news.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/portfolio.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/portfolio.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/profile.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/profile.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/profile_persistent.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/profile_persistent.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/screener.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/screener.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/security.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/security.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/settings.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/zerodha_analyze.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/zerodha_analyze.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/zerodha_portfolio.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/zerodha_portfolio.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/zerodha_trade.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/zerodha_trade.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/auth_supabase.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/auth_supabase.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/supabase_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/supabase_client.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -26,18 +45,29 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "feature-critical-bug-fixes",
-    "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "C:/Project/Code-Base/AI-Project/AITradingLab",
-    "settings.editor.selected.configurable": "com.github.copilot.settings.chat.ChatConfigurable"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ChatTagsLlmMigration&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ClientConfigCleanupMigration&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.CodyAccountHistoryMigration&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.CodyAccountsIdsRefresh&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.CodyAssignOrphanedChatsToActiveAccount&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.CodyConvertUrlToCodebaseName&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.CodyHistoryLlmMigration&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.CodyMigrateChatHistory-v2&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.CodyProjectSettingsMigration&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.DeprecatedChatLlmMigration&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ToggleCodyToolWindowAfterMigration&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;feature-data-base-ui&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Project/Code-Base/AI-Project/AITradingLab&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;
   }
-}]]></component>
+}</component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>

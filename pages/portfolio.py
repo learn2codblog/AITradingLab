@@ -45,6 +45,18 @@ def render_portfolio_manager():
         st.markdown("### 💾 Your Saved Portfolios")
     with col2:
         if st.button("🔄 Refresh", use_container_width=True):
+            try:
+                from src.supabase_client import get_supabase_client
+                supabase = get_supabase_client()
+                if user_id and supabase.is_connected():
+                    supabase.log_activity(
+                        user_id=user_id,
+                        activity_type='portfolio_refresh',
+                        description="Portfolio list refreshed",
+                        status='success'
+                    )
+            except Exception:
+                pass
             st.rerun()
     
     # Fetch saved portfolios
@@ -67,22 +79,55 @@ def render_portfolio_manager():
                     import json
                     st.session_state.portfolio_items = json.loads(portfolio['config_data'])
                     st.success(f"✅ Loaded: {selected_portfolio}")
+                    try:
+                        if user_id and supabase.is_connected():
+                            supabase.log_activity(
+                                user_id=user_id,
+                                activity_type='portfolio_load',
+                                description=f"Loaded portfolio {selected_portfolio}",
+                                action_details={'portfolio_name': selected_portfolio},
+                                status='success'
+                            )
+                    except Exception:
+                        pass
                     st.rerun()
-        
+
         with col2:
             if st.button("🗑️ Delete Portfolio", use_container_width=True):
                 if supabase.delete_portfolio(user_id, selected_portfolio):
                     st.success(f"✅ Deleted: {selected_portfolio}")
+                    try:
+                        if user_id and supabase.is_connected():
+                            supabase.log_activity(
+                                user_id=user_id,
+                                activity_type='portfolio_delete',
+                                description=f"Deleted portfolio {selected_portfolio}",
+                                action_details={'portfolio_name': selected_portfolio},
+                                status='success'
+                            )
+                    except Exception:
+                        pass
                     st.rerun()
                 else:
                     st.error("Failed to delete portfolio")
-        
+
         with col3:
             if st.button("📥 Export JSON", use_container_width=True):
                 portfolio = supabase.get_portfolio_by_name(user_id, selected_portfolio)
                 if portfolio:
                     import json
                     portfolio_json = json.dumps(json.loads(portfolio['config_data']), indent=2)
+                    try:
+                        if user_id and supabase.is_connected():
+                            supabase.log_activity(
+                                user_id=user_id,
+                                activity_type='portfolio_export',
+                                description=f"Exported portfolio {selected_portfolio}",
+                                action_details={'portfolio_name': selected_portfolio},
+                                status='success'
+                            )
+                    except Exception:
+                        pass
                     st.download_button(
                         label="Download Portfolio",
                         data=portfolio_json,
@@ -90,7 +135,7 @@ def render_portfolio_manager():
                         mime="application/json",
                         key="download_portfolio_json"
                     )
-        
+
         with col4:
             if st.button("📋 Duplicate", use_container_width=True):
                 portfolio = supabase.get_portfolio_by_name(user_id, selected_portfolio)
@@ -99,6 +144,17 @@ def render_portfolio_manager():
                     st.session_state.portfolio_items = json.loads(portfolio['config_data'])
                     st.session_state.new_portfolio_name = f"{selected_portfolio} (Copy)"
                     st.success("Copied! Change name and save as new")
+                    try:
+                        if user_id and supabase.is_connected():
+                            supabase.log_activity(
+                                user_id=user_id,
+                                activity_type='portfolio_duplicate',
+                                description=f"Duplicated portfolio {selected_portfolio}",
+                                action_details={'portfolio_name': selected_portfolio},
+                                status='success'
+                            )
+                    except Exception:
+                        pass
                     st.rerun()
     else:
         st.info("📭 No saved portfolios yet. Create one below!")
@@ -133,6 +189,17 @@ def render_portfolio_manager():
                     )
                     if result:
                         st.success(f"✅ Portfolio saved: {portfolio_name}")
+                        try:
+                            if user_id and supabase.is_connected():
+                                supabase.log_activity(
+                                    user_id=user_id,
+                                    activity_type='portfolio_save',
+                                    description=f"Saved portfolio {portfolio_name}",
+                                    action_details={'portfolio_name': portfolio_name.strip()},
+                                    status='success'
+                                )
+                        except Exception:
+                            pass
                         st.session_state.new_portfolio_name = ""
                         st.rerun()
                     else:

@@ -11,6 +11,18 @@ from datetime import datetime
 from src.supabase_client import get_supabase_client
 
 
+def _resolve_timezone(label: str) -> str:
+    if not label:
+        return 'UTC'
+    mapping = {
+        'Asia/Kolkata (IST)': 'Asia/Kolkata',
+        'UTC': 'UTC',
+        'EST': 'America/New_York',
+        'PST': 'America/Los_Angeles'
+    }
+    return mapping.get(label, label)
+
+
 def render_watchlist_manager():
     """Display and manage user's watchlist"""
     user_id = st.session_state.get('user_id')
@@ -171,6 +183,7 @@ def render_backtest_history():
                                 st.write(f"**Total Trades:** {metrics.get('total_trades', 0)}")
                                 st.write(f"**Profit Factor:** {metrics.get('profit_factor', 0):.2f}")
                             
+
                             # Delete button
                             if st.button(f"🗑️ Delete", key=f"delete_backtest_{idx}"):
                                 if supabase.delete_backtest_result(user_id, backtest['test_name']):
@@ -185,6 +198,54 @@ def render_backtest_history():
             st.info("No backtest results to display")
     else:
         st.info("📊 No backtest history yet. Run some backtests to see them here!")
+
+
+def render_backtest_trades():
+    """Display user's backtest trades."""
+    user_id = st.session_state.get('user_id')
+    if not user_id:
+        st.error("Please login first")
+        return
+
+    supabase = get_supabase_client()
+    st.markdown("### 🧾 Backtest Trades")
+
+    trades = supabase.get_user_backtest_trades(user_id, limit=500)
+    if not trades:
+        st.info("No backtest trades found. Run a backtest to populate trades.")
+        return
+
+    data = []
+    for trade in trades:
+        data.append({
+            'Symbol': trade.get('symbol', 'N/A'),
+            'Side': trade.get('side', 'N/A'),
+            'Entry Time': trade.get('entry_time', ''),
+            'Exit Time': trade.get('exit_time', ''),
+            'Entry Price': trade.get('entry_price', 0),
+            'Exit Price': trade.get('exit_price', 0),
+            'Shares': trade.get('shares', 0),
+            'PnL': trade.get('pnl', 0),
+            'Return %': trade.get('return_pct', 0),
+            'Commission': trade.get('commission', 0),
+            'Slippage': trade.get('slippage', 0)
+        })
+
+    df = pd.DataFrame(data)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # Basic summary
+    pnl_values = df['PnL'].astype(float)
+    total_trades = len(df)
+    win_rate = (pnl_values[pnl_values > 0].count() / total_trades) * 100 if total_trades else 0.0
+    st.markdown("---")
+    summary_col1, summary_col2, summary_col3 = st.columns(3)
+    with summary_col1:
+        st.metric("Total Trades", total_trades)
+    with summary_col2:
+        st.metric("Win Rate", f"{win_rate:.2f}%")
+    with summary_col3:
+        st.metric("Total PnL", f"₹{pnl_values.sum():,.2f}")
 
 
 def render_user_settings():
@@ -258,24 +319,43 @@ def render_activity_log():
     
     # Fetch activities
     activities = supabase.get_user_activities(user_id, limit=50)
-    
+    timezone_label = _resolve_timezone(st.session_state.get('user_timezone', 'UTC'))
+
     if activities:
         # Create dataframe
         data = []
         for activity in activities:
             try:
+                details = activity.get('action_details')
+                if isinstance(details, str):
+                    try:
+                        details = json.loads(details)
+                    except Exception:
+                        details = {'raw': details}
+                timestamp = activity.get('timestamp')
+                if timestamp:
+                    try:
+                        ts = pd.to_datetime(timestamp, utc=True)
+                        display_time = ts.tz_convert(timezone_label).strftime('%Y-%m-%d %H:%M:%S %Z')
+                    except Exception:
+                        display_time = datetime.fromisoformat(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+                else:
+                    display_time = 'N/A'
+
                 data.append({
                     'Activity': activity['activity_type'].replace('_', ' ').title(),
                     'Description': activity['description'],
                     'Status': activity.get('status', 'success'),
-                    'Date': datetime.fromisoformat(activity['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+                    'Date': display_time,
+                    'IP': activity.get('ip_address', 'unknown'),
+                    'Details': json.dumps(details) if details else ''
                 })
             except:
                 continue
-        
+
         if data:
             df = pd.DataFrame(data)
-            
+
             # Color code by status
             def highlight_status(row):
                 if row['Status'] == 'success':
@@ -284,13 +364,13 @@ def render_activity_log():
                     return ['background-color: #f8d7da'] * len(row)
                 else:
                     return [''] * len(row)
-            
+
             st.dataframe(
                 df.style.apply(highlight_status, axis=1),
                 use_container_width=True,
                 hide_index=True
             )
-            
+
             # Activity stats
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -307,20 +387,108 @@ def render_activity_log():
         st.info("No activities yet")
 
 
+def render_trading_activity_log():
+    """Display user's trading activity log."""
+    user_id = st.session_state.get('user_id')
+    if not user_id:
+        st.error("Please login first")
+        return
+
+    supabase = get_supabase_client()
+    st.markdown("### 📈 Trading Activity")
+
+    activities = supabase.get_user_trading_activity(user_id, limit=100)
+    timezone_label = _resolve_timezone(st.session_state.get('user_timezone', 'UTC'))
+
+    if not activities:
+        st.info("No trading activity yet")
+        return
+
+    data = []
+    for activity in activities:
+        try:
+            details = activity.get('details')
+            if isinstance(details, str):
+                try:
+                    details = json.loads(details)
+                except Exception:
+                    details = {'raw': details}
+            timestamp = activity.get('timestamp')
+            if timestamp:
+                try:
+                    ts = pd.to_datetime(timestamp, utc=True)
+                    display_time = ts.tz_convert(timezone_label).strftime('%Y-%m-%d %H:%M:%S %Z')
+                except Exception:
+                    display_time = datetime.fromisoformat(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                display_time = 'N/A'
+
+            data.append({
+                'Type': activity.get('activity_type', '').replace('_', ' ').title(),
+                'Description': activity.get('description', ''),
+                'Symbol': activity.get('symbol', ''),
+                'Source': activity.get('source', ''),
+                'Status': activity.get('status', 'success'),
+                'Date': display_time,
+                'IP': activity.get('ip_address', 'unknown'),
+                'Details': json.dumps(details) if details else ''
+            })
+        except Exception:
+            continue
+
+    if data:
+        df = pd.DataFrame(data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Activities", len(df))
+        with col2:
+            success_count = len([a for a in activities if a.get('status') == 'success'])
+            st.metric("Successful", success_count)
+        with col3:
+            failed_count = len([a for a in activities if a.get('status') == 'failed'])
+            st.metric("Failed", failed_count)
+    else:
+        st.info("No trading activity to display")
+
+
 def render_data_management():
     """Main data management dashboard"""
     st.markdown("## 💾 My Data & Preferences")
-    
-    tabs = st.tabs(["📦 Watchlist", "\U0001f4ca Backtest History", "\u2699\ufe0f Settings", "\U0001f4f3 Activity Log"])
-    
+
+    # Log activity once per session
+    if not st.session_state.get('logged_data_management_view', False):
+        try:
+            supabase = get_supabase_client()
+            user_id = st.session_state.get('user_id')
+            if user_id and supabase.is_connected():
+                supabase.log_activity(
+                    user_id=user_id,
+                    activity_type='data_management_view',
+                    description="Opened Data Management",
+                    status='success'
+                )
+                st.session_state.logged_data_management_view = True
+        except Exception:
+            pass
+
+    tabs = st.tabs(["📦 Watchlist", "📊 Backtest History", "🧾 Backtest Trades", "📈 Trading Activity", "⚙️ Settings", "📳 Activity Log"])
+
     with tabs[0]:
         render_watchlist_manager()
-    
+
     with tabs[1]:
         render_backtest_history()
-    
+
     with tabs[2]:
-        render_user_settings()
-    
+        render_backtest_trades()
+
     with tabs[3]:
+        render_trading_activity_log()
+
+    with tabs[4]:
+        render_user_settings()
+
+    with tabs[5]:
         render_activity_log()

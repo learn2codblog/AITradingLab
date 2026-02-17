@@ -7,6 +7,7 @@ import streamlit as st
 import json
 import os
 from datetime import datetime
+import pandas as pd
 from ui.components import get_theme_colors
 from src.auth_supabase import SupabaseAuthManager as AuthManager
 
@@ -28,7 +29,24 @@ def render_my_profile():
         </p>
     </div>
     """, unsafe_allow_html=True)
-    
+
+    # Log activity
+    if not st.session_state.get('logged_profile_view', False):
+        try:
+            from src.supabase_client import get_supabase_client
+            supabase = get_supabase_client()
+            user_id = st.session_state.get('user_id')
+            if user_id and supabase.is_connected():
+                supabase.log_activity(
+                    user_id=user_id,
+                    activity_type='profile_view',
+                    description="Opened My Profile",
+                    status='success'
+                )
+                st.session_state.logged_profile_view = True
+        except Exception:
+            pass
+
     # Get user information
     user_email = st.session_state.get('user_email', 'user@example.com')
     user_name = st.session_state.get('user_name', 'Demo Trader')
@@ -94,8 +112,17 @@ def render_account_info(user_name: str, user_email: str, user_picture: str,
         st.markdown(f"### {user_name}")
         st.markdown(f"📧 **Email:** {user_email}")
         st.markdown(f"🔐 **Login Method:** {login_method.title()}")
-        st.markdown(f"🕐 **Session Started:** {session_start.strftime('%Y-%m-%d %H:%M:%S') if isinstance(session_start, datetime) else session_start}")
-        
+
+        timezone_label = st.session_state.get('user_timezone', 'UTC')
+        if isinstance(session_start, datetime):
+            try:
+                session_display = pd.to_datetime(session_start, utc=True).tz_convert(timezone_label).strftime('%Y-%m-%d %H:%M:%S %Z')
+            except Exception:
+                session_display = session_start.strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            session_display = session_start
+        st.markdown(f"🕐 **Session Started:** {session_display}")
+
         # Account status badges
         st.markdown("#### Account Status")
         col_badge1, col_badge2, col_badge3 = st.columns(3)
@@ -376,43 +403,61 @@ def render_trading_stats(theme_colors: dict):
     # Extract theme colors
     card_bg = theme_colors.get('card_bg', '#1E1E1E')
     
-    # Mock statistics (replace with actual data from database)
+    from src.supabase_client import get_supabase_client
+    supabase = get_supabase_client()
+    user_id = st.session_state.get('user_id')
+
+    activities = supabase.get_user_activities(user_id, limit=200) if user_id else []
+    backtests = supabase.get_user_backtest_results(user_id, limit=200) if user_id else []
+    watchlist = supabase.get_user_watchlist(user_id) if user_id else []
+
+    total_analyses = len([a for a in activities if a.get('activity_type') in {
+        'analysis', 'ai_analysis', 'deep_analysis', 'screener_run'
+    }])
+    backtests_run = len(backtests)
+    watchlist_count = len(watchlist)
+    active_days = len({a.get('timestamp', '')[:10] for a in activities if a.get('timestamp')})
+
     col1, col2, col3, col4 = st.columns(4)
-    
     with col1:
-        st.metric("Total Analyses", "127", delta="+12 this week")
-    
+        st.metric("Total Analyses", f"{total_analyses}")
     with col2:
-        st.metric("Backtests Run", "43", delta="+5 this week")
-    
+        st.metric("Backtests Run", f"{backtests_run}")
     with col3:
-        st.metric("Watchlist Stocks", "15", delta="+3 this month")
-    
+        st.metric("Watchlist Stocks", f"{watchlist_count}")
     with col4:
-        st.metric("Active Days", "28", delta="91% uptime")
-    
+        st.metric("Active Days", f"{active_days}")
+
     st.markdown("---")
     
     # Activity log
     st.markdown("### 📅 Recent Activity")
     
-    activity_data = [
-        {"date": "2026-02-13 10:30", "action": "📊 Ran screener", "details": "Advanced screening on 500 stocks"},
-        {"date": "2026-02-13 09:15", "action": "🤖 AI Analysis", "details": "Deep learning prediction for TCS"},
-        {"date": "2026-02-12 16:45", "action": "📈 Backtest", "details": "MACD strategy on RELIANCE"},
-        {"date": "2026-02-12 14:20", "action": "📰 News Check", "details": "Viewed sentiment analysis for IT sector"},
-        {"date": "2026-02-11 11:00", "action": "💼 Portfolio", "details": "Updated portfolio allocation"},
-    ]
-    
-    for activity in activity_data:
-        st.markdown(f"""
-        <div style='background: {card_bg}; padding: 10px; border-radius: 8px; margin-bottom: 8px;'>
-            <strong>{activity['action']}</strong><br>
-            <small style='color: #718096;'>{activity['date']}</small><br>
-            <span style='color: #A0AEC0;'>{activity['details']}</span>
-        </div>
-        """, unsafe_allow_html=True)
-    
+    timezone_label = st.session_state.get('user_timezone', 'UTC')
+    if activities:
+        for activity in activities[:8]:
+            timestamp = activity.get('timestamp')
+            if timestamp:
+                try:
+                    ts = pd.to_datetime(timestamp, utc=True)
+                    display_time = ts.tz_convert(timezone_label).strftime('%Y-%m-%d %H:%M:%S %Z')
+                except Exception:
+                    display_time = timestamp
+            else:
+                display_time = 'N/A'
+
+            title = activity.get('activity_type', 'activity').replace('_', ' ').title()
+            description = activity.get('description', '')
+            st.markdown(f"""
+            <div style='background: {card_bg}; padding: 10px; border-radius: 8px; margin-bottom: 8px;'>
+                <strong>{title}</strong><br>
+                <small style='color: #718096;'>{display_time}</small><br>
+                <span style='color: #A0AEC0;'>{description}</span>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("No recent activities found.")
+
     st.markdown("---")
     
     # Usage stats
@@ -543,11 +588,21 @@ def render_security_settings(theme_colors: dict, auth_manager: AuthManager):
     # Session management
     st.markdown("#### 🕐 Active Sessions")
     
+    session_start = st.session_state.get('session_start')
+    timezone_label = st.session_state.get('user_timezone', 'UTC')
+    if isinstance(session_start, datetime):
+        try:
+            login_time = pd.to_datetime(session_start, utc=True).tz_convert(timezone_label).strftime('%Y-%m-%d %H:%M:%S %Z')
+        except Exception:
+            login_time = session_start.strftime('%Y-%m-%d %H:%M:%S')
+    else:
+        login_time = str(session_start)
+
     current_session = {
         "device": "Current Browser",
-        "location": "Mumbai, India",
-        "ip": "103.XXX.XXX.XXX",
-        "login_time": st.session_state.get('session_start', datetime.now()).strftime('%Y-%m-%d %H:%M:%S') if isinstance(st.session_state.get('session_start'), datetime) else str(st.session_state.get('session_start'))
+        "location": "Unknown",
+        "ip": st.session_state.get('ip_address', 'unknown'),
+        "login_time": login_time
     }
     
     st.markdown(f"""
