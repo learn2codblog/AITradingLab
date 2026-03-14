@@ -680,6 +680,54 @@ def calculate_advanced_metrics(results, initial_capital, df, tax_rate_pct):
     return metrics
 
 
+def calculate_trade_metrics(trades):
+    """Calculate trade-level metrics from executed trades."""
+    metrics = {
+        'total_trades': 0,
+        'win_rate': 0.0,
+        'avg_trade_pnl': 0.0,
+        'profit_factor': 0.0,
+        'avg_return_pct': 0.0,
+        'best_trade': 0.0,
+        'worst_trade': 0.0,
+        'avg_holding_days': 0.0
+    }
+
+    if not trades:
+        return metrics
+
+    df_trades = pd.DataFrame(trades)
+    if df_trades.empty:
+        return metrics
+
+    df_trades['pnl'] = pd.to_numeric(df_trades.get('pnl', 0), errors='coerce').fillna(0.0)
+    df_trades['return_pct'] = pd.to_numeric(df_trades.get('return_pct', 0), errors='coerce').fillna(0.0)
+
+    metrics['total_trades'] = int(len(df_trades))
+    wins = df_trades[df_trades['pnl'] > 0]
+    losses = df_trades[df_trades['pnl'] < 0]
+    metrics['win_rate'] = float(len(wins) / len(df_trades)) if len(df_trades) else 0.0
+    metrics['avg_trade_pnl'] = float(df_trades['pnl'].mean()) if len(df_trades) else 0.0
+    metrics['avg_return_pct'] = float(df_trades['return_pct'].mean()) if len(df_trades) else 0.0
+    metrics['best_trade'] = float(df_trades['pnl'].max()) if len(df_trades) else 0.0
+    metrics['worst_trade'] = float(df_trades['pnl'].min()) if len(df_trades) else 0.0
+
+    gross_profit = wins['pnl'].sum()
+    gross_loss = abs(losses['pnl'].sum())
+    metrics['profit_factor'] = float(gross_profit / gross_loss) if gross_loss > 0 else 0.0
+
+    if 'entry_time' in df_trades.columns and 'exit_time' in df_trades.columns:
+        try:
+            entry_times = pd.to_datetime(df_trades['entry_time'], errors='coerce')
+            exit_times = pd.to_datetime(df_trades['exit_time'], errors='coerce')
+            holding_days = (exit_times - entry_times).dt.total_seconds() / 86400
+            metrics['avg_holding_days'] = float(holding_days.dropna().mean()) if not holding_days.dropna().empty else 0.0
+        except Exception:
+            metrics['avg_holding_days'] = 0.0
+
+    return metrics
+
+
 def display_backtest_results(results, metrics, df, theme_colors):
     """Display the backtest results and equity curve."""
     st.markdown("### 📈 Backtest Results")

@@ -276,7 +276,136 @@ class SupabaseClient:
         except Exception as e:
             st.error(f"Error disconnecting Kite: {str(e)}")
             return False
-    
+
+    # ==================== WATCHLIST ====================
+
+    def get_user_watchlist(self, user_id: str) -> List[str]:
+        """Get user's watchlist symbols."""
+        if not self.is_connected():
+            return []
+
+        try:
+            response = self.client.table('watchlists').select('symbol').eq('user_id', user_id).order(
+                'added_at', desc=False
+            ).execute()
+            return [row.get('symbol') for row in (response.data or []) if row.get('symbol')]
+        except Exception as e:
+            message = str(e)
+            if 'watchlists.added_at' in message:
+                try:
+                    response = self.client.table('watchlists').select('symbol').eq('user_id', user_id).order(
+                        'created_at', desc=False
+                    ).execute()
+                    if not st.session_state.get('watchlist_schema_hint_shown', False):
+                        st.warning(
+                            "Watchlist table uses created_at. Consider migrating to added_at to match the schema."
+                        )
+                        st.session_state.watchlist_schema_hint_shown = True
+                    return [row.get('symbol') for row in (response.data or []) if row.get('symbol')]
+                except Exception as fallback_error:
+                    st.error(f"Error fetching watchlist: {str(fallback_error)}")
+                    return []
+            st.error(f"Error fetching watchlist: {message}")
+            return []
+
+    def add_to_watchlist(self, user_id: str, symbol: str) -> bool:
+        """Add a symbol to the user's watchlist."""
+        client_to_use = self.service_client if self.service_client else self.client
+        if not client_to_use or not symbol:
+            return False
+
+        symbol = symbol.strip().upper()
+        try:
+            existing = client_to_use.table('watchlists').select('id').eq('user_id', user_id).eq(
+                'symbol', symbol
+            ).execute()
+            if existing.data:
+                return True
+
+            payload = {
+                'user_id': user_id,
+                'symbol': symbol,
+                'added_at': datetime.utcnow().isoformat()
+            }
+            response = client_to_use.table('watchlists').insert(payload).execute()
+            return bool(response.data)
+        except Exception as e:
+            message = str(e)
+            if 'watchlists.added_at' in message:
+                try:
+                    payload = {
+                        'user_id': user_id,
+                        'symbol': symbol,
+                        'created_at': datetime.utcnow().isoformat()
+                    }
+                    response = client_to_use.table('watchlists').insert(payload).execute()
+                    if not st.session_state.get('watchlist_schema_hint_shown', False):
+                        st.warning(
+                            "Watchlist table uses created_at. Consider migrating to added_at to match the schema."
+                        )
+                        st.session_state.watchlist_schema_hint_shown = True
+                    return bool(response.data)
+                except Exception as fallback_error:
+                    st.error(f"Error adding to watchlist: {str(fallback_error)}")
+                    return False
+            st.error(f"Error adding to watchlist: {message}")
+            return False
+
+    def remove_from_watchlist(self, user_id: str, symbol: str) -> bool:
+        """Remove a symbol from the user's watchlist."""
+        client_to_use = self.service_client if self.service_client else self.client
+        if not client_to_use or not symbol:
+            return False
+
+        symbol = symbol.strip().upper()
+        try:
+            response = client_to_use.table('watchlists').delete().eq('user_id', user_id).eq(
+                'symbol', symbol
+            ).execute()
+            return bool(response.data)
+        except Exception as e:
+            st.error(f"Error removing from watchlist: {str(e)}")
+            return False
+
+    # ==================== USER SETTINGS ====================
+
+    def get_user_settings(self, user_id: str) -> Optional[Dict]:
+        """Get user's settings record."""
+        if not self.is_connected():
+            return None
+
+        try:
+            response = self.client.table('user_settings').select('*').eq('user_id', user_id).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            st.error(f"Error fetching user settings: {str(e)}")
+            return None
+
+    def save_user_settings(self, user_id: str, settings: Dict) -> bool:
+        """Create or update user settings."""
+        client_to_use = self.service_client if self.service_client else self.client
+        if not client_to_use:
+            return False
+
+        try:
+            payload = {
+                'user_id': user_id,
+                'settings': json.dumps(settings) if isinstance(settings, dict) else settings,
+                'updated_at': datetime.utcnow().isoformat()
+            }
+
+            existing = client_to_use.table('user_settings').select('id').eq('user_id', user_id).execute()
+            if existing.data:
+                response = client_to_use.table('user_settings').update(payload).eq('user_id', user_id).execute()
+            else:
+                payload['created_at'] = datetime.utcnow().isoformat()
+                response = client_to_use.table('user_settings').insert(payload).execute()
+
+            return bool(response.data)
+        except Exception as e:
+            st.error(f"Error saving user settings: {str(e)}")
+            return False
+
     # ==================== ACTIVITY LOGGING ====================
     
     def log_activity(self, user_id: str, activity_type: str, description: str,
@@ -454,3 +583,85 @@ class SupabaseClient:
         except Exception as e:
             st.error(f"Error fetching backtest trades: {str(e)}")
             return []
+
+    # ==================== PORTFOLIOS ====================
+
+    def get_user_portfolios(self, user_id: str) -> List[Dict]:
+        """Get user's saved portfolios (uses service role to bypass RLS)."""
+        if not self.is_connected():
+            return []
+
+        try:
+            client_to_use = self.service_client if self.service_client else self.client
+            response = client_to_use.table('portfolios').select('*').eq('user_id', user_id).order(
+                'created_at', desc=True
+            ).execute()
+            return response.data if response.data else []
+        except Exception as e:
+            st.error(f"Error fetching portfolios: {str(e)}")
+            return []
+
+    def get_portfolio_by_name(self, user_id: str, portfolio_name: str) -> Optional[Dict]:
+        """Get a single portfolio by name (uses service role to bypass RLS)."""
+        if not self.is_connected():
+            return None
+
+        try:
+            client_to_use = self.service_client if self.service_client else self.client
+            response = client_to_use.table('portfolios').select('*').eq('user_id', user_id).eq(
+                'portfolio_name', portfolio_name
+            ).limit(1).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            st.error(f"Error fetching portfolio: {str(e)}")
+            return None
+
+    def save_portfolio_config(self, user_id: str, portfolio_name: str, config_data: Dict) -> bool:
+        """Create or update a portfolio configuration (uses service role to bypass RLS)."""
+        client_to_use = self.service_client if self.service_client else self.client
+        if not client_to_use:
+            return False
+
+        try:
+            payload = {
+                'user_id': user_id,
+                'portfolio_name': portfolio_name,
+                'config_data': json.dumps(config_data) if isinstance(config_data, dict) else config_data,
+                'updated_at': datetime.utcnow().isoformat()
+            }
+
+            existing = client_to_use.table('portfolios').select('id').eq('user_id', user_id).eq(
+                'portfolio_name', portfolio_name
+            ).execute()
+
+            if existing.data:
+                response = client_to_use.table('portfolios').update(payload).eq('id', existing.data[0]['id']).execute()
+            else:
+                payload['created_at'] = datetime.utcnow().isoformat()
+                response = client_to_use.table('portfolios').insert(payload).execute()
+
+            return bool(response.data)
+        except Exception as e:
+            st.error(f"Error saving portfolio: {str(e)}")
+            return False
+
+    def delete_portfolio(self, user_id: str, portfolio_name: str) -> bool:
+        """Delete a portfolio by name (uses service role to bypass RLS)."""
+        client_to_use = self.service_client if self.service_client else self.client
+        if not client_to_use:
+            return False
+
+        try:
+            response = client_to_use.table('portfolios').delete().eq('user_id', user_id).eq(
+                'portfolio_name', portfolio_name
+            ).execute()
+            return bool(response.data)
+        except Exception as e:
+            st.error(f"Error deleting portfolio: {str(e)}")
+            return False
+
+
+@st.cache_resource(show_spinner=False)
+def get_supabase_client() -> "SupabaseClient":
+    """Return a cached Supabase client instance for the app."""
+    return SupabaseClient()

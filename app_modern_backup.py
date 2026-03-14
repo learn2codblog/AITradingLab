@@ -405,7 +405,7 @@ else:
 button_results = {}
 for col, label, key in btn_data:
     with col:
-        button_results[key] = st.button(label, use_container_width=True, key=key, help=label)
+        button_results[key] = st.button(label, width="stretch", key=key, help=label)
 
 home_btn = button_results["nav_home"]
 analysis_btn = button_results["nav_analysis"]
@@ -618,7 +618,7 @@ elif page:  # All other pages
 
         with col4:
             st.markdown("<br>", unsafe_allow_html=True)
-            analyze_button = st.button("🔍 Analyze Stock", type="primary", use_container_width=True)
+            analyze_button = st.button("🔍 Analyze Stock", type="primary", width="stretch")
 
     if analyze_button and symbol:
         with st.spinner(f"Analyzing {symbol}..."):
@@ -790,11 +790,11 @@ elif page:  # All other pages
 
                 with chart_tab1:
                     fig_price = create_price_chart(stock_data.tail(200), f"{symbol} Price Chart")
-                    st.plotly_chart(fig_price, use_container_width=True)
+                    st.plotly_chart(fig_price, width="stretch")
 
                 with chart_tab2:
                     fig_volume = create_volume_chart(stock_data.tail(200), f"{symbol} Volume")
-                    st.plotly_chart(fig_volume, use_container_width=True)
+                    st.plotly_chart(fig_volume, width="stretch")
 
                 with chart_tab3:
                     col1, col2 = st.columns(2)
@@ -803,7 +803,7 @@ elif page:  # All other pages
                         latest = stock_data.iloc[-1]
                         rsi = latest.get('RSI14', 50)
                         fig_rsi = create_gauge_chart(rsi, "RSI (14)", 0, 100, 30, 70)
-                        st.plotly_chart(fig_rsi, use_container_width=True)
+                        st.plotly_chart(fig_rsi, width="stretch")
 
                     with col2:
                         macd = latest.get('MACD', 0)
@@ -942,7 +942,7 @@ elif page:  # All other pages
                         })
 
                     df_mtf = pd.DataFrame(mtf_data)
-                    st.dataframe(df_mtf, use_container_width=True, hide_index=True)
+                    st.dataframe(df_mtf, width="stretch", hide_index=True)
                 except Exception as e:
                     st.warning(f"Could not calculate multi-timeframe levels: {str(e)}")
 
@@ -1050,7 +1050,7 @@ elif page == "🤖 AI Deep Analysis":
 
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
-        run_ai = st.button("🚀 Run AI Analysis", type="primary", use_container_width=True)
+        run_ai = st.button("🚀 Run AI Analysis", type="primary", width="stretch")
 
     # Advanced Settings Expander
     with st.expander("⚙️ Advanced Analysis Settings"):
@@ -1248,7 +1248,7 @@ elif page == "🤖 AI Deep Analysis":
                         height=300,
                         margin=dict(l=20, r=20, t=40, b=20)
                     )
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width="stretch")
 
                 # ─── MARKET REGIME ───
                 st.markdown("### 🌍 Market Regime Detection")
@@ -1494,7 +1494,7 @@ elif page == "🤖 AI Deep Analysis":
                             height=400,
                             legend=dict(orientation="h", yanchor="bottom", y=1.02)
                         )
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, width="stretch")
 
                         st.warning("⚠️ LSTM predictions are experimental. Past performance doesn't guarantee future results. Use as one factor in your analysis.")
                     else:
@@ -1522,7 +1522,7 @@ elif page == "🤖 AI Deep Analysis":
                     ]
                 }
 
-                st.dataframe(pd.DataFrame(summary_data), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(summary_data), width="stretch", hide_index=True)
 
                 # ═══════════════════════════════════════════════════════════════
                 # ENHANCED TECHNICAL INDICATORS DASHBOARD
@@ -1740,7 +1740,7 @@ elif page == "🤖 AI Deep Analysis":
 
                     fig_trend.update_layout(height=450, title="Price with Supertrend & Moving Averages",
                                            xaxis_rangeslider_visible=False)
-                    st.plotly_chart(fig_trend, use_container_width=True)
+                    st.plotly_chart(fig_trend, width="stretch")
 
                 with ind_tab2:
                     st.markdown("#### Momentum Indicators")
@@ -1856,7 +1856,7 @@ elif page == "🤖 AI Deep Analysis":
                                                          mode='lines', name='Signal', line=dict(color='#f093fb')), row=3, col=1)
 
                     fig_mom.update_layout(height=600, showlegend=True, xaxis_rangeslider_visible=False)
-                    st.plotly_chart(fig_mom, use_container_width=True)
+                    st.plotly_chart(fig_mom, width="stretch")
 
                 with ind_tab3:
                     st.markdown("#### Volatility Indicators")
@@ -1940,7 +1940,7 @@ elif page == "🤖 AI Deep Analysis":
                                                     mode='lines', name='Middle Band', line=dict(color='#667eea', dash='dash')))
 
                     fig_bb.update_layout(height=400, title="Price with Bollinger Bands", xaxis_rangeslider_visible=False)
-                    st.plotly_chart(fig_bb, use_container_width=True)
+                    st.plotly_chart(fig_bb, width="stretch")
 
                 with ind_tab4:
                     st.markdown("#### Volume Indicators")
@@ -2020,7 +2020,7 @@ elif page == "🤖 AI Deep Analysis":
                                             marker_color=colors, name='Volume'), row=2, col=1)
 
                     fig_vol.update_layout(height=500, showlegend=True, xaxis_rangeslider_visible=False)
-                    st.plotly_chart(fig_vol, use_container_width=True)
+                    st.plotly_chart(fig_vol, width="stretch")
 
                 # ═══════════════════════════════════════════════════════════════
                 # POSITION SIZING & RISK MANAGEMENT
@@ -2087,7 +2087,7 @@ elif page == "🤖 AI Deep Analysis":
                                 f"{position_result['recommended_risk_percent']:.1f}%"
                             ]
                         })
-                        st.dataframe(risk_df, use_container_width=True, hide_index=True)
+                        st.dataframe(risk_df, width="stretch", hide_index=True)
 
                 # ═══════════════════════════════════════════════════════════════
                 # VOLATILITY FORECASTING (GARCH/EWMA)
@@ -2139,7 +2139,7 @@ elif page == "🤖 AI Deep Analysis":
                                 xaxis_title="Days Ahead",
                                 height=250
                             )
-                            st.plotly_chart(fig_vol, use_container_width=True)
+                            st.plotly_chart(fig_vol, width="stretch")
                     else:
                         st.warning(f"Volatility forecast: {vol_forecast.get('error', 'Unknown error')}")
 
@@ -2184,7 +2184,7 @@ elif page == "🤖 AI Deep Analysis":
                                 f"{vol_regime['vol_60d']:.1f}%"
                             ]
                         })
-                        st.dataframe(vol_compare, use_container_width=True, hide_index=True)
+                        st.dataframe(vol_compare, width="stretch", hide_index=True)
                     else:
                         st.warning(f"Volatility regime: {vol_regime.get('error', 'Unknown error')}")
 
@@ -2218,7 +2218,7 @@ elif page == "🤖 AI Deep Analysis":
                             yaxis_title="Feature",
                             height=400
                         )
-                        st.plotly_chart(fig_fi, use_container_width=True)
+                        st.plotly_chart(fig_fi, width="stretch")
 
                     with fi_col2:
                         st.markdown(f"""
@@ -2372,7 +2372,7 @@ elif page == "🤖 AI Deep Analysis":
                             yaxis_title="Portfolio Value (₹)",
                             height=300
                         )
-                        st.plotly_chart(fig_eq, use_container_width=True)
+                        st.plotly_chart(fig_eq, width="stretch")
 
                     # Backtest summary
                     with st.expander("📊 Detailed Backtest Statistics"):
@@ -2400,7 +2400,7 @@ elif page == "🤖 AI Deep Analysis":
                                 f"{backtest_result.get('cost_pct_of_pnl', 0):.1f}%"
                             ]
                         })
-                        st.dataframe(bt_stats, use_container_width=True, hide_index=True)
+                        st.dataframe(bt_stats, width="stretch", hide_index=True)
                 else:
                     st.warning(f"Backtesting: {backtest_result.get('error', 'Unknown error')}")
 
