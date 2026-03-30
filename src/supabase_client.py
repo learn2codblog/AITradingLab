@@ -26,6 +26,9 @@ except ImportError:
 class SupabaseClient:
     """Production-grade Supabase database client for persistent data storage"""
     
+    # Version to track code changes - increment when adding new methods
+    VERSION = "2.0.0"
+
     def __init__(self):
         """Initialize Supabase connection"""
         self.supabase_url = os.getenv('SUPABASE_URL')
@@ -61,6 +64,27 @@ class SupabaseClient:
         """Check if connected to Supabase"""
         return self.client is not None
     
+    def get_version(self) -> str:
+        """Get the SupabaseClient version"""
+        return self.VERSION
+
+    def verify_methods(self) -> Dict[str, bool]:
+        """Verify that all expected methods exist (for debugging cache issues)"""
+        required_methods = [
+            'get_user_portfolios',
+            'get_user_watchlist',
+            'save_backtest_result',
+            'get_user_backtest_results',
+            'save_backtest_trades',
+            'get_user_backtest_trades',
+            'log_activity',
+            'log_trading_activity',
+            'get_user_activities',
+            'get_user_trading_activity'
+        ]
+
+        return {method: hasattr(self, method) for method in required_methods}
+
     # ==================== USER MANAGEMENT ====================
     
     def user_exists(self, email: str) -> bool:
@@ -663,5 +687,20 @@ class SupabaseClient:
 
 @st.cache_resource(show_spinner=False)
 def get_supabase_client() -> "SupabaseClient":
-    """Return a cached Supabase client instance for the app."""
+    """
+    Return a cached Supabase client instance for the app.
+
+    If you're seeing AttributeError for methods that should exist,
+    clear the Streamlit cache by:
+    1. Press 'C' in the running app, OR
+    2. Restart the Streamlit server
+
+    This is necessary after code updates to refresh the cached instance.
+    """
     return SupabaseClient()
+
+
+def clear_supabase_cache():
+    """Force clear the Supabase client cache. Call this after updating the SupabaseClient class."""
+    get_supabase_client.clear()
+

@@ -869,23 +869,24 @@ def prepare_lstm_data(df: pd.DataFrame, lookback: int = 60, forecast_days: int =
 
 
 def build_lstm_model(lookback: int = 60, forecast_days: int = 5, n_features: int = 1,
-                     use_mc_dropout: bool = True, model_size: str = 'small'):
+                     use_mc_dropout: bool = True, model_size: str = 'small', model_type: str = 'lstm'):
     """
-    Build enhanced LSTM model for price prediction with MC Dropout and L2 regularization
+    Build enhanced neural network model for price prediction with MC Dropout and L2 regularization
 
     Args:
         lookback: Number of timesteps to look back
         forecast_days: Number of days to forecast
         n_features: Number of input features
         use_mc_dropout: If True, use MC Dropout for uncertainty estimation
-        model_size: 'small', 'medium', or 'large' architecture
+        model_size: 'small', 'medium', 'large', 'xlarge', or 'hybrid' architecture
+        model_type: 'lstm', 'gru', 'bidirectional', or 'hybrid'
 
     Returns:
         Compiled Keras model
     """
     try:
         from tensorflow.keras.models import Sequential, Model
-        from tensorflow.keras.layers import LSTM, Dense, Dropout, BatchNormalization, Input
+        from tensorflow.keras.layers import LSTM, GRU, Bidirectional, Dense, Dropout, BatchNormalization, Input, Conv1D, MaxPooling1D, Flatten, Concatenate, Attention
         from tensorflow.keras.optimizers import Adam
         from tensorflow.keras.regularizers import l2
         import tensorflow as tf
@@ -907,26 +908,64 @@ def build_lstm_model(lookback: int = 60, forecast_days: int = 5, n_features: int
         elif model_size == 'medium':
             units = [64, 32]
             dropout_rate = 0.25
-        else:  # large
+        elif model_size == 'large':
             units = [128, 64, 32]
             dropout_rate = 0.2
+        elif model_size == 'xlarge':
+            units = [256, 128, 64]
+            dropout_rate = 0.2
+        else:  # hybrid
+            units = [128, 64]
+            dropout_rate = 0.25
+
+        # Select the appropriate recurrent layer type
+        use_bidirectional = False  # Initialize default
+
+        if model_type == 'gru':
+            RecurrentLayer = GRU
+            use_bidirectional = False
+        elif model_type == 'bidirectional':
+            # We'll wrap LSTM with Bidirectional
+            RecurrentLayer = LSTM
+            use_bidirectional = True
+        elif model_type == 'hybrid':
+            # Hybrid model uses special architecture
+            return build_hybrid_model(lookback, forecast_days, n_features, use_mc_dropout, dropout_rate, l2_reg, dropout_layer)
+        else:
+            RecurrentLayer = LSTM
+            use_bidirectional = False
 
         model = Sequential()
 
-        # First LSTM layer
-        model.add(LSTM(units[0], return_sequences=len(units) > 1,
-                      input_shape=(lookback, n_features),
-                      kernel_regularizer=l2(l2_reg),
-                      recurrent_regularizer=l2(l2_reg)))
+        # First recurrent layer
+        if use_bidirectional:
+            model.add(Bidirectional(
+                LSTM(units[0], return_sequences=len(units) > 1,
+                     kernel_regularizer=l2(l2_reg),
+                     recurrent_regularizer=l2(l2_reg)),
+                input_shape=(lookback, n_features)
+            ))
+        else:
+            model.add(RecurrentLayer(units[0], return_sequences=len(units) > 1,
+                                    input_shape=(lookback, n_features),
+                                    kernel_regularizer=l2(l2_reg),
+                                    recurrent_regularizer=l2(l2_reg)))
         model.add(dropout_layer(dropout_rate))
         model.add(BatchNormalization())
 
-        # Middle LSTM layers
+        # Middle recurrent layers
         for i, unit in enumerate(units[1:], 1):
             return_seq = i < len(units) - 1
-            model.add(LSTM(unit, return_sequences=return_seq,
-                          kernel_regularizer=l2(l2_reg),
-                          recurrent_regularizer=l2(l2_reg)))
+            if use_bidirectional:
+                model.add(Bidirectional(
+                    LSTM(unit, return_sequences=return_seq,
+                         kernel_regularizer=l2(l2_reg),
+                         recurrent_regularizer=l2(l2_reg))
+                ))
+            else:
+                model.add(RecurrentLayer(unit, return_sequences=return_seq,
+                                        kernel_regularizer=l2(l2_reg),
+                                        recurrent_regularizer=l2(l2_reg)))
             model.add(dropout_layer(dropout_rate))
             if return_seq:
                 model.add(BatchNormalization())
@@ -945,6 +984,52 @@ def build_lstm_model(lookback: int = 60, forecast_days: int = 5, n_features: int
         return model
 
     except ImportError:
+        return None
+
+
+def build_hybrid_model(lookback: int, forecast_days: int, n_features: int,
+                       use_mc_dropout: bool, dropout_rate: float, l2_reg: float, dropout_layer):
+    """Build a hybrid model combining CNN, LSTM, and Attention mechanisms"""
+    try:
+        from tensorflow.keras.models import Model
+        from tensorflow.keras.layers import Input, Conv1D, MaxPooling1D, LSTM, Dense, Concatenate, Flatten
+        from tensorflow.keras.optimizers import Adam
+        from tensorflow.keras.regularizers import l2
+
+        inputs = Input(shape=(lookback, n_features))
+
+        # CNN branch for pattern extraction
+        cnn = Conv1D(filters=64, kernel_size=3, activation='relu', padding='same')(inputs)
+        cnn = MaxPooling1D(pool_size=2)(cnn)
+        cnn = Conv1D(filters=32, kernel_size=3, activation='relu', padding='same')(cnn)
+        cnn = Flatten()(cnn)
+
+        # LSTM branch for temporal patterns
+        lstm = LSTM(64, return_sequences=True, kernel_regularizer=l2(l2_reg))(inputs)
+        lstm = dropout_layer(dropout_rate)(lstm)
+        lstm = LSTM(32, return_sequences=False, kernel_regularizer=l2(l2_reg))(lstm)
+        lstm = dropout_layer(dropout_rate)(lstm)
+
+        # Concatenate CNN and LSTM features
+        combined = Concatenate()([cnn, lstm])
+
+        # Dense layers
+        x = Dense(64, activation='relu', kernel_regularizer=l2(l2_reg))(combined)
+        x = dropout_layer(dropout_rate * 0.5)(x)
+        x = Dense(32, activation='relu', kernel_regularizer=l2(l2_reg))(x)
+        outputs = Dense(forecast_days)(x)
+
+        model = Model(inputs=inputs, outputs=outputs)
+        model.compile(
+            optimizer=Adam(learning_rate=0.001),
+            loss='huber',
+            metrics=['mae']
+        )
+
+        return model
+    except Exception as e:
+        print(f"Error building hybrid model: {e}")
+        # Fallback to simple LSTM
         return None
 
 
@@ -985,9 +1070,9 @@ def prepare_lstm_features(df: pd.DataFrame, features: list = None) -> tuple:
 
 def predict_with_lstm(df: pd.DataFrame, lookback: int = 60, forecast_days: int = 5,
                       epochs: int = 50, features: list = None,
-                      n_mc_samples: int = 30, model_size: str = 'small') -> dict:
+                      n_mc_samples: int = 30, model_size: str = 'small', model_type: str = 'lstm') -> dict:
     """
-    Enhanced LSTM prediction with TimeSeriesSplit, L2 regularization,
+    Enhanced neural network prediction with TimeSeriesSplit, L2 regularization,
     MC Dropout for uncertainty estimation, and overfitting detection.
 
     Args:
@@ -997,7 +1082,8 @@ def predict_with_lstm(df: pd.DataFrame, lookback: int = 60, forecast_days: int =
         epochs: Maximum training epochs (default 50)
         features: List of feature columns to use (default: auto-select)
         n_mc_samples: Number of MC Dropout samples for uncertainty (default 30)
-        model_size: 'small', 'medium', or 'large' (default 'small' to prevent overfitting)
+        model_size: 'small', 'medium', 'large', 'xlarge', or 'hybrid' (default 'small' to prevent overfitting)
+        model_type: 'lstm', 'gru', 'bidirectional', or 'hybrid' (default 'lstm')
 
     Returns:
         Dict with predictions, confidence intervals, metrics, and overfitting diagnostics
@@ -1066,9 +1152,9 @@ def predict_with_lstm(df: pd.DataFrame, lookback: int = 60, forecast_days: int =
         X_val = X_val[:-test_size]
         y_val = y_val[:-test_size]
 
-        # Build model with smaller architecture to prevent overfitting
+        # Build model with appropriate architecture
         model = build_lstm_model(lookback, forecast_days, n_features,
-                                use_mc_dropout=True, model_size=model_size)
+                                use_mc_dropout=True, model_size=model_size, model_type=model_type)
         if model is None:
             return {'error': 'TensorFlow not installed'}
 

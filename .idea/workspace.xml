@@ -2,15 +2,41 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0f77fe36-067f-4af8-8989-a2ce5cf3dcbd" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/AGENTS.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/DATETIME_FIX_QUICKREF.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/DATETIME_TIMEZONE_FIX.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/DEEP_LEARNING_MODEL_FIX.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/NEWS_FEATURE.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/NEWS_QUICK_GUIDE.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/SUPABASE_CACHE_ISSUE.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/.env.example" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app_modern_backup.py" beforeDir="false" afterPath="$PROJECT_DIR$/app_modern_backup.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/pages/backtest.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/backtest.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pages/deep_learning.py" beforeDir="false" afterPath="$PROJECT_DIR$/pages/deep_learning.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/advanced_ai.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/advanced_ai.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/news_provider.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/news_provider.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/supabase_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/supabase_client.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="CopilotPersistence">
+    <persistenceIdMap>
+      <entry key="_C:/Project/Code-Base/AI-Project/AITradingLab" value="39N8UQhr7HsSe2e2tqOw7lgbzdZ" />
+    </persistenceIdMap>
+  </component>
+  <component name="CopilotUserSelectedChatMode">
+    <option name="chatModeId" value="Agent" />
+  </component>
+  <component name="CopilotUserSelectedModel">
+    <selectedModels>
+      <entry key="edit-panel" value="GPT-4.1" />
+      <entry key="chat-panel" value="Claude Sonnet 4.5" />
+      <entry key="agent-panel" value="Claude Sonnet 4.5" />
+    </selectedModels>
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />

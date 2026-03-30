@@ -12,6 +12,7 @@ numpy>=1.24.0
 # Data
 yfinance>=0.2.30
 requests>=2.31.0
+feedparser>=6.0.10
 
 # Visualization
 plotly>=5.15.0

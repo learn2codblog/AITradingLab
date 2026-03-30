@@ -119,15 +119,23 @@ def render_news_card(article: dict, index: int, theme_colors: dict):
     border_color = category_colors.get(article['category'], "#718096")
     category_emoji = category_emojis.get(article['category'], "📰")
     
-    # Format timestamp
-    time_diff = datetime.now() - article['timestamp']
-    if time_diff.seconds < 3600:
-        time_str = f"{time_diff.seconds // 60} minutes ago"
-    elif time_diff.seconds < 86400:
-        time_str = f"{time_diff.seconds // 3600} hours ago"
-    else:
-        time_str = f"{time_diff.days} days ago"
-    
+    # Format timestamp - handle both timezone-aware and naive datetimes
+    try:
+        article_time = article['timestamp']
+        # Normalize to timezone-aware UTC if needed
+        if article_time.tzinfo is None or article_time.tzinfo.utcoffset(article_time) is None:
+            article_time = article_time.replace(tzinfo=timezone.utc)
+
+        time_diff = datetime.now(timezone.utc) - article_time
+        if time_diff.seconds < 3600 and time_diff.days == 0:
+            time_str = f"{time_diff.seconds // 60} minutes ago"
+        elif time_diff.seconds < 86400 and time_diff.days == 0:
+            time_str = f"{time_diff.seconds // 3600} hours ago"
+        else:
+            time_str = f"{time_diff.days} days ago"
+    except Exception:
+        time_str = "Recently"
+
     # Render card
     with st.expander(f"{category_emoji} {article['title']}", expanded=(index <= 2)):
         st.markdown(f"""
@@ -234,8 +242,8 @@ def render_company_news(theme_colors: dict):
                         
                         # Convert timestamp if available
                         try:
-                            pub_time = datetime.fromtimestamp(item.get('providerPublishTime', 0))
-                            time_ago = datetime.now() - pub_time
+                            pub_time = datetime.fromtimestamp(item.get('providerPublishTime', 0), tz=timezone.utc)
+                            time_ago = datetime.now(timezone.utc) - pub_time
                             if time_ago.days > 0:
                                 time_str = f"{time_ago.days}d ago"
                             elif time_ago.seconds >= 3600:

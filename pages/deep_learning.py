@@ -52,9 +52,13 @@ def render_deep_learning():
             help="Number of days to predict ahead (1-30 days)"
         )
     
-    # Model selection with detailed descriptions
+    # Model selection with detailed descriptions using session state
     st.markdown("#### 🤖 Choose Your AI Model")
     
+    # Initialize model type in session state if not present
+    if 'dl_model_type' not in st.session_state:
+        st.session_state.dl_model_type = "LSTM (Fast)"
+
     model_tabs = st.tabs(["🚀 LSTM (Fast)", "🔬 LSTM (Deep)", "⚡ GRU", "🎯 Bidirectional LSTM", "🧩 Hybrid Model"])
     
     with model_tabs[0]:
@@ -65,8 +69,10 @@ def render_deep_learning():
             cons=["May miss complex patterns", "Best for trends, not volatility"],
             use_case="Daily trading decisions, quick analysis"
         )
-        model_type = "LSTM (Fast)" if st.button("Select LSTM (Fast)", key="lstm_fast", use_container_width=True) else None
-    
+        if st.button("Select LSTM (Fast)", key="lstm_fast", use_container_width=True):
+            st.session_state.dl_model_type = "LSTM (Fast)"
+            st.rerun()
+
     with model_tabs[1]:
         render_model_info(
             "LSTM (Deep) - Advanced Analysis",
@@ -75,9 +81,10 @@ def render_deep_learning():
             cons=["Slower training (3-5 minutes)", "Requires more data", "Risk of overfitting"],
             use_case="Swing trading, medium-term predictions"
         )
-        if model_type is None:
-            model_type = "LSTM (Deep)" if st.button("Select LSTM (Deep)", key="lstm_deep", use_container_width=True) else None
-    
+        if st.button("Select LSTM (Deep)", key="lstm_deep", use_container_width=True):
+            st.session_state.dl_model_type = "LSTM (Deep)"
+            st.rerun()
+
     with model_tabs[2]:
         render_model_info(
             "GRU - Efficient Alternative",
@@ -86,9 +93,10 @@ def render_deep_learning():
             cons=["May underperform on very long sequences", "Fewer parameters to tune"],
             use_case="Intraday to short-term predictions"
         )
-        if model_type is None:
-            model_type = "GRU" if st.button("Select GRU", key="gru", use_container_width=True) else None
-    
+        if st.button("Select GRU", key="gru", use_container_width=True):
+            st.session_state.dl_model_type = "GRU"
+            st.rerun()
+
     with model_tabs[3]:
         render_model_info(
             "Bidirectional LSTM - Best Accuracy",
@@ -97,9 +105,10 @@ def render_deep_learning():
             cons=["Slowest training (5-7 minutes)", "Requires most data", "High computational cost"],
             use_case="Position trading, long-term investment decisions"
         )
-        if model_type is None:
-            model_type = "Bidirectional LSTM" if st.button("Select Bidirectional LSTM", key="bilstm", use_container_width=True) else None
-    
+        if st.button("Select Bidirectional LSTM", key="bilstm", use_container_width=True):
+            st.session_state.dl_model_type = "Bidirectional LSTM"
+            st.rerun()
+
     with model_tabs[4]:
         render_model_info(
             "Hybrid Model - Experimental",
@@ -108,16 +117,14 @@ def render_deep_learning():
             cons=["Experimental", "Longest training time", "Requires careful tuning"],
             use_case="Research, testing new strategies"
         )
-        if model_type is None:
-            model_type = "Hybrid Model" if st.button("Select Hybrid Model", key="hybrid", use_container_width=True) else None
-    
-    # If no model selected yet, default to LSTM (Fast)
-    if model_type is None:
-        model_type = "LSTM (Fast)"
-        st.info(f"ℹ️ Currently selected: **{model_type}** (default)")
-    else:
-        st.success(f"✅ Selected: **{model_type}**")
-    
+        if st.button("Select Hybrid Model", key="hybrid", use_container_width=True):
+            st.session_state.dl_model_type = "Hybrid Model"
+            st.rerun()
+
+    # Get model type from session state
+    model_type = st.session_state.dl_model_type
+    st.success(f"✅ Selected: **{model_type}**")
+
     # Advanced settings with educational tooltips
     with st.expander("⚙️ Advanced Model Settings (Optional)", expanded=False):
         st.markdown("**These settings control how the model learns. Default values work well for most cases.**")
@@ -272,24 +279,29 @@ def render_deep_learning():
                 # Configure model parameters based on selection
                 if model_type == "LSTM (Fast)":
                     model_size = 'small'
-                    training_note = "Fast model with 2 layers - good for quick analysis"
+                    model_arch = 'lstm'
+                    training_note = "Fast LSTM with 2 layers - good for quick analysis"
                 elif model_type == "LSTM (Deep)":
                     model_size = 'large'
-                    training_note = "Deep model with 4 layers - captures complex patterns"
+                    model_arch = 'lstm'
+                    training_note = "Deep LSTM with 4 layers - captures complex patterns"
                 elif model_type == "GRU":
                     model_size = 'medium'
+                    model_arch = 'gru'
                     training_note = "GRU architecture - efficient and fast"
                 elif model_type == "Bidirectional LSTM":
                     model_size = 'xlarge'
-                    training_note = "Bidirectional processing - highest accuracy"
+                    model_arch = 'bidirectional'
+                    training_note = "Bidirectional LSTM - processes data in both directions"
                 else:  # Hybrid
                     model_size = 'hybrid'
-                    training_note = "Hybrid architecture with CNN and attention layers"
-                
+                    model_arch = 'hybrid'
+                    training_note = "Hybrid architecture with CNN, LSTM, and attention"
+
                 st.info(f"🧠 {training_note}")
                 
                 # Train and predict with progress indicator
-                with st.spinner(f"⏳ Training {model_type} model with {epochs} epochs... This may take 1-3 minutes"):
+                with st.spinner(f"⏳ Training {model_type} model with {epochs} epochs... This may take 1-5 minutes"):
                     prediction = predict_with_lstm(
                         df,
                         lookback=lookback,
@@ -297,6 +309,7 @@ def render_deep_learning():
                         epochs=epochs,
                         features=features_to_use,
                         model_size=model_size,
+                        model_type=model_arch,
                         n_mc_samples=30 if confidence else 1
                     )
                 
